@@ -1,5 +1,4 @@
-# Re-create the README.md file as a downloadable file
-readme_content = """# Fedora Lite Autoconfig
+# Fedora Lite Autoconfig
 
 A reproducible setup script for **Fedora Workstation** aimed at creating a **lightweight yet powerful system**:
 - Keep GNOME session available, but use **Hyprland** as the main compositor.
