@@ -1,3 +1,3 @@
 nullobsi/ly
 adriend/fedora-apps
-gloriouseggroll/nobara-42
+#gloriouseggroll/nobara-42
