@@ -30,7 +30,7 @@ as_root "dnf -y install mesa-dri-drivers mesa-vulkan-drivers vulkan-tools"
 case "$gpu" in
   amd)
     # RADV (default) + AMD Vulkan
-    as_root "dnf -y install vulkan-radeon"
+    #as_root "dnf -y install vulkan-radeon"
     ;;
   intel)
     as_root "dnf -y install intel-media-driver"
