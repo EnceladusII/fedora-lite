@@ -19,14 +19,12 @@ as_root "bash -lc '
 
 # Multimedia codecs
 as_root "dnf -y install \
-  ffmpeg \
   gstreamer1-plugins-good \
   gstreamer1-plugins-bad-free \
   gstreamer1-plugins-bad-freeworld \
   gstreamer1-plugins-ugly \
   gstreamer1-plugin-openh264 \
   lame\* \
-  libdvdcss \
   x264 x265"
 
 # Flathub (system-wide)
