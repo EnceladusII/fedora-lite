@@ -26,3 +26,9 @@ fastestmirror=True
 EOF
   echo \"[OK] dnf.conf tuned (backup: $DNF_CONF.bak.$ts)\"
 '"
+
+# System update
+banner "00_system_update"
+echo "[INFO] Updating system (dnf upgrade)"
+as_root "dnf -y upgrade --refresh"
+echo "[OK] System up to date"
