@@ -1,0 +1,32 @@
+# ---- GNOME "demo / gadget" apps ----
+gnome-tour             # Welcome app
+gnome-characters       # Emoji / symbol selector
+gnome-contacts         # Contacts manager
+gnome-maps
+gnome-music
+gnome-photos
+gnome-weather
+gnome-clocks
+gnome-calendar
+gnome-logs             # logs viewer
+gnome-font-viewer
+
+# ---- Media / capture ----
+cheese                 # Webcam
+simple-scan            # Scanner tool
+
+# ---- Tools / utilities ----
+gnome-software         # GNOME Software
+gnome-calculator
+gnome-boxes            # VM manager
+gnome-connections      # RDP/VNC client
+gnome-color-manager
+gnome-parental-controls
+ptyxis                 # Experimental terminal
+firefox
+
+# ---- Fedora bug reporting (only UI) ----
+gnome-abrt             # Problem Reporting GUI
+
+# ---- Misc ----
+yelp                   # GNOME help
