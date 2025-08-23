@@ -7,7 +7,7 @@ set -euo pipefail
 
 : "${TARGET_USER:?TARGET_USER must be set}"
 UHOME="$(user_home "$TARGET_USER")"
-BUILD_DIR="$UHOME/.local/share/ly"
+BUILD_DIR="$UHOME/.local/src/ly"
 
 echo "[INFO] Installing build dependencies for Ly"
 # Minimal set known to be needed; xorg-xauth helps X/Wayland sessions auth
@@ -25,11 +25,11 @@ fi
 
 # Build as user
 echo "[INFO] Building Ly"
-as_user "zig build"
+as_user "cd ~/src/ly && zig build"
 
 # Install binaries and systemd service as root
 echo "[INFO] Installing Ly (binaries + systemd unit)"
-as_root "zig build installexe -Dinit_system=systemdl"
+as_root "cd ~/src/ly && zig build installexe -Dinit_system=systemdl"
 
 # Deploy config if provided in repo
 if [[ -f "$ROOT_DIR/config/ly/config.ini" ]]; then
