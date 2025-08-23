@@ -24,8 +24,7 @@ as_root "dnf -y install \
   gstreamer1-plugins-bad-freeworld \
   gstreamer1-plugins-ugly \
   gstreamer1-plugin-openh264 \
-  lame\* \
-  x264 x265"
+  lame\*"
 
 # Flathub (system-wide)
 as_root "flatpak --system remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo || true"
