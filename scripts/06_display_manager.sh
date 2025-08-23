@@ -20,7 +20,7 @@ if [[ -d "$BUILD_DIR/.git" ]]; then
 else
   echo "[INFO] Cloning Ly into $BUILD_DIR"
   as_user "mkdir -p '$(dirname "$BUILD_DIR")'"
-  as_user "git clone https://github.com/fairyglade/ly.git '$BUILD_DIR'"
+  as_user "git clone https://github.com/fairyglade/ly.git '$BUILD_DIR/ly'"
 fi
 
 # Build as user
