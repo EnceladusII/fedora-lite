@@ -28,10 +28,10 @@ echo "[INFO] Detected GPU: $gpu"
 as_root "dnf -y install mesa-dri-drivers mesa-vulkan-drivers vulkan-tools"
 
 case "$gpu" in
-  amd)
-    # RADV (default) + AMD Vulkan
-    #as_root "dnf -y install vulkan-radeon"
-    ;;
+    amd)
+      # RADV (Mesa) is already provided by mesa-vulkan-drivers
+      echo "[INFO] AMD GPU: mesa-vulkan-drivers already installed (RADV)."
+      ;;
   intel)
     as_root "dnf -y install intel-media-driver"
     ;;
