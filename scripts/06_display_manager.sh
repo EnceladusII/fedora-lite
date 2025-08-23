@@ -25,14 +25,14 @@ fi
 
 # Build as user
 echo "[INFO] Building Ly"
-as_user "make -C '$BUILD_DIR' clean || true"
-as_user "make -C '$BUILD_DIR'"
+as_user "make -C '$BUILD_DIR/ly' clean || true"
+as_user "make -C '$BUILD_DIR/ly'"
 
 # Install binaries and systemd service as root
 echo "[INFO] Installing Ly (binaries + systemd unit)"
-as_root "make -C '$BUILD_DIR' install"
+as_root "make -C '$BUILD_DIR/ly' install"
 # Some versions provide a helper target for systemd units:
-as_root "make -C '$BUILD_DIR' installsystemd || true"
+as_root "make -C '$BUILD_DIR/ly' installsystemd || true"
 
 # Deploy config if provided in repo
 if [[ -f "$ROOT_DIR/config/ly/config.ini" ]]; then
