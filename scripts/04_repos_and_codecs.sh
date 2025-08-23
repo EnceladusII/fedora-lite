@@ -15,7 +15,7 @@ as_root "bash -lc '
 '"
 
 # Core group refresh
-as_root "dnf -y groupupdate core"
+#as_root "dnf -y groupupdate core"
 
 # Multimedia codecs
 as_root "dnf -y install \
