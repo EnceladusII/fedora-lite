@@ -4,11 +4,16 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$DIR/.." && pwd)"
 
-# Petit helper d'affichage
+. "$DIR/00_helpers.sh"
+
 banner() { printf "\n==== %s ====\n" "$1"; }
 
-# Liste des étapes dans l’ordre recommandé
-# (03 vérifie et installe un terminal avant de retirer ptyxis si nécessaire)
+# System update
+banner "00_system_update"
+echo "[INFO] Updating system (dnf upgrade)"
+as_root "dnf -y upgrade --refresh"
+
+# Steps list
 STEPS=(
   "01_config_dnf"
   "02_enable_dark_mode"
