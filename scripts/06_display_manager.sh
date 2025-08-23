@@ -11,7 +11,7 @@ BUILD_DIR="$UHOME/.local/share/ly"
 
 echo "[INFO] Installing build dependencies for Ly"
 # Minimal set known to be needed; xorg-xauth helps X/Wayland sessions auth
-as_root "dnf -y kernel-devel pam-devel libxcb-devel zig xorg-x11-xauth xorg-x11-server-common brightnessctl"
+as_root "dnf -y install kernel-devel pam-devel libxcb-devel zig xorg-x11-xauth xorg-x11-server-common brightnessctl"
 
 # Clone or update source as the target user
 if [[ -d "$BUILD_DIR/.git" ]]; then
