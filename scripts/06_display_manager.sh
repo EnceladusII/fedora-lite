@@ -29,7 +29,7 @@ as_user "cd ~/.local/src/ly && zig build"
 
 # Install binaries and systemd service as root
 echo "[INFO] Installing Ly (binaries + systemd unit)"
-as_user "cd ~/.local/src/ly && zig build installexe -Dinit_system=systemdl"
+as_user "cd ~/.local/src/ly && zig build installexe -Dinit_system=systemd"
 
 # Deploy config if provided in repo
 if [[ -f "$ROOT_DIR/config/ly/config.ini" ]]; then
