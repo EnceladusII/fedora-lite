@@ -1,0 +1,16 @@
+# Music
+deezer-desktop
+
+# Mail / Cloud
+thunderbird
+nextcloud
+
+# IDE / Tools
+vesktop               # Discord client
+yumex                 # Yum Extender GUI
+timeshift
+gnome-tweaks          # tweaks GNOME
+
+# GPU specific
+nvidia-optimus-ui
+lact                  # Linux AMD Control Tool

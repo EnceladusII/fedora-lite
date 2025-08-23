@@ -1,0 +1,8 @@
+# Control for Sonos
+org.jakub.kundera.Noson
+
+# Science / Bioinfo
+org.pymol.PyMOL
+
+# Mail
+ch.protonmail.protonmail-bridge
