@@ -11,7 +11,7 @@ BUILD_DIR="$UHOME/.local/share/ly"
 
 echo "[INFO] Installing build dependencies for Ly"
 # Minimal set known to be needed; xorg-xauth helps X/Wayland sessions auth
-as_root "dnf -y install git gcc make pam-devel xorg-x11-xauth"
+as_root "dnf -y kernel-devel pam-devel libxcb-devel zig xorg-x11-xauth xorg-x11-server-common brightnessctl"
 
 # Clone or update source as the target user
 if [[ -d "$BUILD_DIR/.git" ]]; then
@@ -25,14 +25,11 @@ fi
 
 # Build as user
 echo "[INFO] Building Ly"
-as_user "make -C '$BUILD_DIR' clean || true"
-as_user "make -C '$BUILD_DIR'"
+as_user "zig build"
 
 # Install binaries and systemd service as root
 echo "[INFO] Installing Ly (binaries + systemd unit)"
-as_root "make -C '$BUILD_DIR' install"
-# Some versions provide a helper target for systemd units:
-as_root "make -C '$BUILD_DIR' installsystemd || true"
+as_root "zig build installexe -Dinit_system=systemdl"
 
 # Deploy config if provided in repo
 if [[ -f "$ROOT_DIR/config/ly/config.ini" ]]; then
