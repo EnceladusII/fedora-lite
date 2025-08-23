@@ -11,7 +11,7 @@ BUILD_DIR="$UHOME/.local/src/ly"
 
 echo "[INFO] Installing build dependencies for Ly"
 # Minimal set known to be needed; xorg-xauth helps X/Wayland sessions auth
-as_root "dnf -y install git gcc make pam-devel xorg-xauth"
+as_root "dnf -y install git gcc make pam-devel xorg-x11-xauth"
 
 # Clone or update source as the target user
 if [[ -d "$BUILD_DIR/.git" ]]; then
