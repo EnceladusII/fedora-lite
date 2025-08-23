@@ -7,7 +7,7 @@ set -euo pipefail
 
 : "${TARGET_USER:?TARGET_USER must be set}"
 UHOME="$(user_home "$TARGET_USER")"
-BUILD_DIR="$UHOME/.local/src/ly"
+BUILD_DIR="$UHOME/.local/share/ly"
 
 echo "[INFO] Installing build dependencies for Ly"
 # Minimal set known to be needed; xorg-xauth helps X/Wayland sessions auth
@@ -20,7 +20,7 @@ if [[ -d "$BUILD_DIR/.git" ]]; then
 else
   echo "[INFO] Cloning Ly into $BUILD_DIR"
   as_user "mkdir -p '$(dirname "$BUILD_DIR")'"
-  as_user "git clone https://github.com/fairyglade/ly.git '$BUILD_DIR/ly'"
+  as_user "git clone https://github.com/fairyglade/ly.git '$BUILD_DIR'"
 fi
 
 # Build as user
