@@ -1,59 +1,58 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Enable the chosen Display Manager (Ly by default), disable others.
-# Runs as user; uses as_root/enable_service/disable_service from helpers.
+# Install and enable Ly (from source: https://github.com/fairyglade/ly)
+# Works as user; uses as_root for privileged steps.
 
 . "$(dirname "$0")/00_helpers.sh"
 
-DM_CHOICE="${DM:-ly}"
+: "${TARGET_USER:?TARGET_USER must be set}"
+UHOME="$(user_home "$TARGET_USER")"
+BUILD_DIR="$UHOME/.local/src/ly"
 
-echo "[INFO] Display Manager requested: $DM_CHOICE"
+echo "[INFO] Installing build dependencies for Ly"
+# Minimal set known to be needed; xorg-xauth helps X/Wayland sessions auth
+as_root "dnf -y install git gcc make pam-devel xorg-xauth"
 
-case "$DM_CHOICE" in
-  ly)
-    # 1) Install Ly (expects repo availability; add COPR to lists/coprs.txt if needed)
-    as_root "dnf -y install ly || true"
+# Clone or update source as the target user
+if [[ -d "$BUILD_DIR/.git" ]]; then
+  echo "[INFO] Updating Ly source in $BUILD_DIR"
+  as_user "git -C '$BUILD_DIR' fetch --all --prune && git -C '$BUILD_DIR' checkout master && git -C '$BUILD_DIR' pull --ff-only"
+else
+  echo "[INFO] Cloning Ly into $BUILD_DIR"
+  as_user "mkdir -p '$(dirname "$BUILD_DIR")'"
+  as_user "git clone https://github.com/fairyglade/ly.git '$BUILD_DIR'"
+fi
 
-    # 2) Deploy config
-    as_root "mkdir -p /etc/ly"
-    if [[ -f \"$ROOT_DIR/config/ly/config.ini\" ]]; then
-      as_root "install -m 0644 \"$ROOT_DIR/config/ly/config.ini\" /etc/ly/config.ini"
-    fi
+# Build as user
+echo "[INFO] Building Ly"
+as_user "make -C '$BUILD_DIR' clean || true"
+as_user "make -C '$BUILD_DIR'"
 
-    # 3) Disable GDM and enable Ly
-    disable_service gdm.service
-    enable_service ly.service
+# Install binaries and systemd service as root
+echo "[INFO] Installing Ly (binaries + systemd unit)"
+as_root "make -C '$BUILD_DIR' install"
+# Some versions provide a helper target for systemd units:
+as_root "make -C '$BUILD_DIR' installsystemd || true"
 
-    # 4) Make sure we boot to graphical target
-    as_root "systemctl set-default graphical.target"
-    echo '[OK] Ly enabled (gdm disabled).'
-    ;;
+# Deploy config if provided in repo
+if [[ -f "$ROOT_DIR/config/ly/config.ini" ]]; then
+  echo "[INFO] Installing /etc/ly/config.ini from project config"
+  as_root "mkdir -p /etc/ly"
+  as_root "install -m 0644 '$ROOT_DIR/config/ly/config.ini' /etc/ly/config.ini"
+fi
 
-  greetd)
-    # Optional alternative if you switch DM in .env
-    as_root "dnf -y install greetd tuigreet"
-    as_root "mkdir -p /etc/greetd"
-    if [[ -f \"$ROOT_DIR/config/greetd/config.toml\" ]]; then
-      as_root "install -m 0644 \"$ROOT_DIR/config/greetd/config.toml\" /etc/greetd/config.toml"
-    fi
-    disable_service gdm.service
-    enable_service greetd.service
-    as_root "systemctl set-default graphical.target"
-    echo '[OK] greetd (tuigreet) enabled (gdm disabled).'
-    ;;
+# Switch DM: disable GDM, enable Ly
+echo "[INFO] Enabling Ly and disabling GDM"
+disable_service gdm.service
+enable_service ly.service
 
-  gdm)
-    # In case you want to revert to GDM
-    as_root "dnf -y install gdm"
-    disable_service ly.service
-    disable_service greetd.service
-    enable_service gdm.service
-    as_root "systemctl set-default graphical.target"
-    echo '[OK] GDM enabled (others disabled).'
-    ;;
+# Ensure we boot to graphical target
+as_root "systemctl set-default graphical.target"
 
-  *)
-    echo "ERROR: Unknown DM '$DM_CHOICE'. Set DM=ly|greetd|gdm in .env." >&2
-    exit 1
-    ;;
-esac
+# Sanity checks
+echo "[INFO] Verifying installation"
+as_root "test -f /usr/bin/ly && echo ' - ly binary OK' || echo ' - ly binary MISSING'"
+as_root "systemctl status ly.service --no-pager -l || true"
+as_root "test -f /etc/pam.d/ly && echo ' - PAM config OK' || echo ' - PAM config MISSING (install target should have created it)'"
+
+echo "[OK] Ly installed from source and enabled as Display Manager."
