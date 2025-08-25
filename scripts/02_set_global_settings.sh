@@ -28,7 +28,7 @@ fi
 ###############################################################################
 # 1) Dark mode (per-user)
 ###############################################################################
-as_user "dnf install -y adw-gtk3-theme"
+as_root "dnf install -y adw-gtk3-theme"
 
 # GNOME/libadwaita → mode sombre global
 as_user "dbus-run-session gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'"
