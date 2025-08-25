@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Step 6 — Switch from greetd/tuigreet to Ly (Zig build) without running script via sudo
+# Step 6 — Switch from gdm to Ly (Zig build)
 
 . "$(dirname "$0")/00_helpers.sh"
 
@@ -10,17 +10,17 @@ set -euo pipefail
 echo "[INFO] Switching to Ly Display Manager"
 echo "[INFO] TARGET_USER=${TARGET_USER}"
 
-# 1) Désactiver les DMs concurrents + greetd/tuigreet
+# 1) Disable others DMs (gdm or greetd)
 echo "[INFO] Disabling conflicting display managers…"
 disable_service gdm.service || true
 as_root "systemctl disable --now greetd.service" || true
 as_root "dnf -y remove greetd tuigreet" || true
 
-# 2) Dépendances Fedora (README amont)
+# 2) Installing dependencies
 echo "[INFO] Installing build/runtime dependencies…"
 as_root "dnf -y install kernel-devel pam-devel libxcb-devel zig xorg-x11-xauth xorg-x11-server-common brightnessctl"
 
-# Vérif Zig (Ly cible 0.14.x)
+# Verify Zig (Ly need 0.14.x)
 if command -v zig >/dev/null 2>&1; then
   ZIG_VER="$(zig version || true)"
   case "${ZIG_VER}" in
@@ -32,7 +32,7 @@ else
   exit 1
 fi
 
-# 3) Récupérer + build Ly (en utilisateur)
+# 3) Clone and Build Ly
 REPO_URL="${REPO_URL:-https://codeberg.org/fairyglade/ly.git}"
 BUILD_DIR="${BUILD_DIR:-/tmp/ly}"
 
@@ -48,7 +48,7 @@ fi
 echo "[INFO] Building Ly with Zig as regular user…"
 ( cd "${BUILD_DIR}" && zig build -Doptimize=ReleaseFast )
 
-# 4) Installer Ly (systemd) — nécessite les privilèges
+# 4) Installing Ly (systemd)
 echo "[INFO] Installing Ly (systemd)…"
 ( cd "${BUILD_DIR}" && as_root "zig build installexe -Dinit_system=systemd" )
 
@@ -57,27 +57,27 @@ echo "[INFO] Deploying Ly config + PAM…"
 as_root "install -D -m 0644 '${ROOT_DIR}/config/ly/config.ini' /etc/ly/config.ini"
 as_root "install -D -m 0644 '${ROOT_DIR}/config/pam.d/ly'      /etc/pam.d/ly"
 
-# Remplacement éventuel pour autologin
+# Optional autologin
 if grep -q "__TARGET_USER__" "${ROOT_DIR}/config/ly/config.ini"; then
   as_root "sed -i 's/__TARGET_USER__/${TARGET_USER}/g' /etc/ly/config.ini"
 fi
 
-# 6) Session Hyprland fallback si absente
+# 6) Hyprland session fallback if unavailable
 if ! test -f /usr/share/wayland-sessions/hyprland.desktop; then
   echo "[INFO] Installing fallback Hyprland session file…"
   as_root "install -D -m 0644 '${ROOT_DIR}/config/wayland-sessions/hyprland.desktop' \
     /usr/share/wayland-sessions/hyprland.desktop"
 fi
 
-# 7) SELinux (recommandé)
+# 7) SELinux (pam.d)
 echo "[INFO] Restoring SELinux contexts…"
 as_root "restorecon -RF /etc/ly /etc/pam.d/ly /usr/share/wayland-sessions || true"
 
-# 8) Ly tourne sur tty2 par défaut → désactiver getty@tty2
+# 8) tty2 by default → disable getty@tty2
 echo "[INFO] Disabling getty@tty2.service (Ly runs on tty2)…"
 as_root "systemctl disable --now getty@tty2.service" || true
 
-# 9) Activer Ly + graphical target
+# 9) Enable Ly + graphical target
 echo "[INFO] Enabling Ly…"
 as_root "systemctl enable ly.service"
 as_root "systemctl set-default graphical.target"
