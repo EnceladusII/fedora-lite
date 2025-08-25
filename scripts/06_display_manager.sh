@@ -1,55 +1,56 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Install and enable Ly (from source: https://github.com/fairyglade/ly)
-# Works as user; uses as_root for privileged steps.
+# Step 6 — Switch to greetd + tuigreet (from Fedora repos), simple & clean
 
 . "$(dirname "$0")/00_helpers.sh"
 
 : "${TARGET_USER:?TARGET_USER must be set}"
-UHOME="$(user_home "$TARGET_USER")"
-BUILD_DIR="$UHOME/.local/src/ly"
 
-echo "[INFO] Installing build dependencies for Ly"
-# Minimal set known to be needed; xorg-xauth helps X/Wayland sessions auth
-as_root "dnf -y install kernel-devel pam-devel libxcb-devel zig xorg-x11-xauth xorg-x11-server-common brightnessctl"
+echo "[INFO] Installing greetd + tuigreet"
+as_root "dnf -y install greetd tuigreet"
 
-# Clone or update source as the target user
-if [[ -d "$BUILD_DIR/.git" ]]; then
-  echo "[INFO] Updating Ly source in $BUILD_DIR"
-  as_user "git -C '$BUILD_DIR' fetch --all --prune && git -C '$BUILD_DIR' checkout master && git -C '$BUILD_DIR' pull --ff-only"
-else
-  echo "[INFO] Cloning Ly into $BUILD_DIR"
-  as_user "mkdir -p '$(dirname "$BUILD_DIR")'"
-  as_user "git clone https://github.com/fairyglade/ly.git '$BUILD_DIR'"
-fi
+echo "[INFO] Writing /etc/tuigreet.toml"
+as_root "install -D -m 0644 /dev/null /etc/tuigreet.toml"
+as_root "tee /etc/tuigreet.toml >/dev/null <<'TOML'
+# /etc/tuigreet.toml
+# Tuigreet config (mirrors most CLI flags). Keep it minimal and reliable.
+time = true                # show clock
+remember = true            # remember last username
+remember_session = true    # remember last session chosen
+asterisks = true           # hide password chars
 
-# Build as user
-echo "[INFO] Building Ly"
-as_user "cd ~/.local/src/ly && zig build"
+# Let tuigreet offer both Wayland and Xorg sessions from system .desktop files:
+sessions = [
+  "/usr/share/wayland-sessions",
+  "/usr/share/xsessions",
+]
 
-# Install binaries and systemd service as root
-echo "[INFO] Installing Ly (binaries + systemd unit)"
-as_root "cd $UHOME/.local/src/ly && zig build installexe -Dinit_system=systemd"
+# Optional: show a user menu (handy on multi-user systems)
+user_menu = true
 
-# Deploy config if provided in repo
-if [[ -f "$ROOT_DIR/config/ly/config.ini" ]]; then
-  echo "[INFO] Installing /etc/ly/config.ini from project config"
-  as_root "mkdir -p /etc/ly"
-  as_root "install -m 0644 '$ROOT_DIR/config/ly/config.ini' /etc/ly/config.ini"
-fi
+# Tip: no default cmd here -> when you pick a session from the list,
+# tuigreet will launch that session's Exec from the .desktop file.
+TOML"
 
-# Switch DM: disable GDM, enable Ly
-echo "[INFO] Enabling Ly and disabling GDM"
-disable_service gdm.service
-enable_service ly.service
+echo "[INFO] Writing /etc/greetd/config.toml"
+as_root "install -D -m 0644 /dev/null /etc/greetd/config.toml"
+as_root "tee /etc/greetd/config.toml >/dev/null <<'TOML'
+# /etc/greetd/config.toml
+# Minimal greetd config that runs tuigreet with our TOML.
+[terminal]
+vt = 1
 
-# Ensure we boot to graphical target
+[default_session]
+# Use the TOML above; still pass sessions paths explicitly (belt & suspenders)
+command = \"/usr/bin/tuigreet --config /etc/tuigreet.toml --sessions /usr/share/wayland-sessions:/usr/share/xsessions\"
+user = \"greeter\"
+TOML"
+
+echo "[INFO] Enabling greetd (and disabling GDM if present)"
+disable_service gdm.service || true
+enable_service greetd.service
+
+echo "[INFO] Setting graphical target as default"
 as_root "systemctl set-default graphical.target"
 
-# Sanity checks
-echo "[INFO] Verifying installation"
-as_root "test -f /usr/bin/ly && echo ' - ly binary OK' || echo ' - ly binary MISSING'"
-as_root "systemctl status ly.service --no-pager -l || true"
-as_root "test -f /etc/pam.d/ly && echo ' - PAM config OK' || echo ' - PAM config MISSING (install target should have created it)'"
-
-echo "[OK] Ly installed from source and enabled as Display Manager."
+echo "[OK] greetd + tuigreet installed and enabled. Reboot to test the greeter."
