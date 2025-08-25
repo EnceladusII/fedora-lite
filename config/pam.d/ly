@@ -1,0 +1,5 @@
+# PAM stack for Ly on Fedora — reuse distro defaults
+auth        include     system-auth
+account     include     system-auth
+password    include     system-auth
+session     include     system-auth
