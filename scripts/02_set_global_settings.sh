@@ -8,12 +8,9 @@ set -euo pipefail
 UHOME="$(user_home "$TARGET_USER")"
 
 # Variables .env obligatoires
-: "${LANG_DEFAULT:?Missing LANG_DEFAULT in .env}"
-: "${LC_TIME:?Missing LC_TIME in .env}"
-: "${LC_NUMERIC:?Missing LC_NUMERIC in .env}"
-: "${LC_MEASUREMENT:?Missing LC_MEASUREMENT in .env}"
-: "${LC_PAPER:?Missing LC_PAPER in .env}"
-: "${CLOCK_FORMAT:?Missing CLOCK_FORMAT in .env}"
+: "${LANG_DEFAULT:?Missing LANG_DEFAULT in .env}"   # ex: en_US.UTF-8
+: "${FORMATS:?Missing FORMATS in .env}"             # ex: fr_FR.UTF-8
+: "${CLOCK_FORMAT:?Missing CLOCK_FORMAT in .env}"   # ex: 24h ou 12h"
 
 : "${KEYBOARD_LAYOUT:?Missing KEYBOARD_LAYOUT in .env}"
 : "${KEYBOARD_VARIANT:?Missing KEYBOARD_VARIANT in .env}"   # peut être ""
@@ -43,9 +40,6 @@ as_user "dbus-run-session gsettings set org.gnome.desktop.interface gtk-theme 'a
 ###############################################################################
 # 2) Locales / formats / unités (per-user)
 ###############################################################################
-: "${LANG_DEFAULT:?Missing LANG_DEFAULT in .env}"   # ex: en_US.UTF-8
-: "${FORMATS:?Missing FORMATS in .env}"             # ex: fr_FR.UTF-8
-: "${CLOCK_FORMAT:?Missing CLOCK_FORMAT in .env}"   # ex: 24h ou 12h
 
 # a) Formats (comme GNOME Settings) — gsettings org.gnome.system.locale::region
 as_user "dbus-run-session gsettings set org.gnome.system.locale region '${FORMATS}' || true"
