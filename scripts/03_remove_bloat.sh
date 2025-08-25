@@ -51,7 +51,7 @@ fi
 as_root "dnf -y autoremove"
 
 # Remove useless repos
-as_root "dnf -y dnf config-manager setopt google-chrome.enabled=0"
+as_root "dnf -y config-manager setopt google-chrome.enabled=0"
 as_root "dnf -y copr disable phracek:PyCharm"
 as_root "dnf -y clean all"
 
