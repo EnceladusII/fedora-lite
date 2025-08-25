@@ -2,4 +2,4 @@ adriend/fedora-apps
 che/zed
 ilyaz/LACT
 sneexy/zen-browser
-whayne/vesktop
+whayn/vesktop
