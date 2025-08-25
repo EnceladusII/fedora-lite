@@ -28,31 +28,17 @@ fi
 ###############################################################################
 # 1) Dark mode (per-user)
 ###############################################################################
-as_user "dbus-run-session gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' || true"
-as_user "dbus-run-session gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark' || true"
-as_user "dbus-run-session gsettings set org.gnome.desktop.interface icon-theme 'Adwaita' || true"
+as_user "dnf install -y adw-gtk3-theme"
 
-# GTK fallbacks dans ~/.config
-as_user "mkdir -p ~/.config/gtk-3.0 ~/.config/gtk-4.0"
-as_user "bash -lc 'cat > ~/.config/gtk-3.0/settings.ini <<\"INI\"
-[Settings]
-gtk-theme-name=Adwaita-dark
-gtk-application-prefer-dark-theme=1
-gtk-icon-theme-name=Adwaita
-INI'"
+# GNOME/libadwaita → mode sombre global
+as_user "dbus-run-session gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'"
 
-as_user "bash -lc 'cat > ~/.config/gtk-4.0/settings.ini <<\"INI\"
-[Settings]
-gtk-theme-name=Adwaita-dark
-gtk-icon-theme-name=Adwaita
-INI'"
+# Icônes et curseur par défaut
+as_user "dbus-run-session gsettings set org.gnome.desktop.interface icon-theme 'Adwaita'"
+as_user "dbus-run-session gsettings set org.gnome.desktop.interface cursor-theme 'Adwaita'"
 
-# Hint GTK via environment.d
-as_user "mkdir -p ~/.config/environment.d"
-as_user "bash -lc 'cat > ~/.config/environment.d/99-gtk-dark.conf <<\"ENV\"
-GTK_THEME=Adwaita:dark
-GTK_ICON_THEME=Adwaita
-ENV'"
+# Legacy apps (GTK3) → utiliser adw-gtk3-dark
+as_user "dbus-run-session gsettings set org.gnome.desktop.interface gtk-theme 'adw-gtk3-dark'"
 
 ###############################################################################
 # 2) Locales / formats / unités (per-user)
