@@ -1,0 +1,7 @@
+time = true
+remember = true
+remember_session = true
+asterisks = true
+user_menu = true
+
+sessions = ["/usr/share/wayland-sessions", "/usr/share/xsessions"]

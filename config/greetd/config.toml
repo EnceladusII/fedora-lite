@@ -1,0 +1,7 @@
+[terminal]
+vt = 1
+
+[default_session]
+# tuigreet tourne en 'greeter', mais pré-sélectionne ton compte via --user
+command = "/usr/bin/tuigreet --config /etc/tuigreet.toml --sessions /usr/share/wayland-sessions:/usr/share/xsessions --user __TARGET_USER__"
+user = "greeter"

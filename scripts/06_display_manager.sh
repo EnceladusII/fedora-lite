@@ -1,56 +1,44 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Step 6 — Switch to greetd + tuigreet (from Fedora repos), simple & clean
+# Step 6 — greetd + tuigreet (Fedora repos), staging safe by default
 
 . "$(dirname "$0")/00_helpers.sh"
 
 : "${TARGET_USER:?TARGET_USER must be set}"
+: "${ROOT_DIR:?ROOT_DIR must be set}"  # normalement défini dans 00_helpers.sh
 
 echo "[INFO] Installing greetd + tuigreet"
 as_root "dnf -y install greetd tuigreet"
 
-echo "[INFO] Writing /etc/tuigreet.toml"
-as_root "install -D -m 0644 /dev/null /etc/tuigreet.toml"
-as_root "tee /etc/tuigreet.toml >/dev/null <<'TOML'
-# /etc/tuigreet.toml
-# Tuigreet config (mirrors most CLI flags). Keep it minimal and reliable.
-time = true                # show clock
-remember = true            # remember last username
-remember_session = true    # remember last session chosen
-asterisks = true           # hide password chars
+echo "[INFO] Deploying configs"
+as_root "install -D -m 0644 '$ROOT_DIR/config/greetd/config.toml' /etc/greetd/config.toml"
+as_root "sed -i 's/__TARGET_USER__/$TARGET_USER/g' /etc/greetd/config.toml"
+as_root "install -D -m 0644 '$ROOT_DIR/config/tuigreet/tuigreet.toml' /etc/tuigreet.toml"
 
-# Let tuigreet offer both Wayland and Xorg sessions from system .desktop files:
-sessions = [
-  "/usr/share/wayland-sessions",
-  "/usr/share/xsessions",
-]
 
-# Optional: show a user menu (handy on multi-user systems)
-user_menu = true
+echo "[INFO] Checking sessions directories"
+if ! as_root "test -d /usr/share/wayland-sessions || test -d /usr/share/xsessions"; then
+  echo '[WARN] No sessions directories found. Install at least one session (e.g., hyprland).'
+fi
+# Sanity: list found .desktop sessions
+as_root "sh -c 'ls -1 /usr/share/wayland-sessions/*.desktop 2>/dev/null || true'"
+as_root "sh -c 'ls -1 /usr/share/xsessions/*.desktop 2>/dev/null || true'"
 
-# Tip: no default cmd here -> when you pick a session from the list,
-# tuigreet will launch that session's Exec from the .desktop file.
-TOML"
+# Don’t bounce current session by default
+if [[ "${APPLY_NOW:-0}" = "1" ]]; then
+  echo "[INFO] Enabling greetd now (this will kill current graphical session)"
+  disable_service gdm.service || true
+  enable_service greetd.service
+  as_root "systemctl set-default graphical.target"
+  # Redémarrer le target graphique (optionnel; sinon reboot)
+  # as_root "systemctl isolate graphical.target"
+  echo "[OK] greetd enabled. Reboot recommended."
+else
+  echo "[INFO] Staging only: will enable greetd at next boot."
+  disable_service gdm.service || true
+  as_root "systemctl enable greetd.service"
+  as_root "systemctl set-default graphical.target"
+  echo "[OK] Ready. Reboot when you’re ready to switch to greetd."
+fi
 
-echo "[INFO] Writing /etc/greetd/config.toml"
-as_root "install -D -m 0644 /dev/null /etc/greetd/config.toml"
-as_root "tee /etc/greetd/config.toml >/dev/null <<'TOML'
-# /etc/greetd/config.toml
-# Minimal greetd config that runs tuigreet with our TOML.
-[terminal]
-vt = 1
-
-[default_session]
-# Use the TOML above; still pass sessions paths explicitly (belt & suspenders)
-command = \"/usr/bin/tuigreet --config /etc/tuigreet.toml --sessions /usr/share/wayland-sessions:/usr/share/xsessions\"
-user = \"greeter\"
-TOML"
-
-echo "[INFO] Enabling greetd (and disabling GDM if present)"
-disable_service gdm.service || true
-enable_service greetd.service
-
-echo "[INFO] Setting graphical target as default"
-as_root "systemctl set-default graphical.target"
-
-echo "[OK] greetd + tuigreet installed and enabled. Reboot to test the greeter."
+echo "[HINT] If you get a black screen, check: journalctl -u greetd -b -e"
