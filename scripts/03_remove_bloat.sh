@@ -51,9 +51,8 @@ fi
 as_root "dnf -y autoremove"
 
 # Remove useless repos
-as_root "dnf -y upgrade \
-    --disablerepo=google-chrome \
-    --disablerepo=copr:copr.fedorainfracloud.org:phracek:PyCharm
-"
+as_root "dnf -y dnf config-manager setopt google-chrome.enabled=0"
+as_root "dnf -y copr disable phracek:PyCharm"
+as_root "dnf -y clean all"
 
 echo "[OK] Bloat removal completed."
