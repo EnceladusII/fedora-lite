@@ -1,3 +1,5 @@
-nullobsi/ly
 adriend/fedora-apps
-#gloriouseggroll/nobara-42
+che/zed
+ilyaz/LACT
+sneexy/zen-browser
+whayne/vesktop
