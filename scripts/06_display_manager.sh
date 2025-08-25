@@ -6,6 +6,7 @@ set -euo pipefail
 
 : "${TARGET_USER:?TARGET_USER must be set}"
 : "${ROOT_DIR:?ROOT_DIR must be set}"
+: "${THEME:?Missing THEME in .env}"
 
 echo "[INFO] Switching to Ly Display Manager"
 echo "[INFO] TARGET_USER=${TARGET_USER}"
