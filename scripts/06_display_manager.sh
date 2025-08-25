@@ -69,9 +69,9 @@ if ! test -f /usr/share/wayland-sessions/hyprland.desktop; then
     /usr/share/wayland-sessions/hyprland.desktop"
 fi
 
-as_root "install -D -m 0644 '${ROOT_DIR}/config/vtrgb/vtrgb' /etc/vtrgb" || true
-as_root "install -D -m 0644 '${ROOT_DIR}/config/systemd/vt-colors.service' /etc/systemd/system/vt-colors.service" || true
-as_root "systemctl enable vt-colors.service" || true
+#as_root "install -D -m 0644 '${ROOT_DIR}/config/vtrgb/vtrgb' /etc/vtrgb" || true
+#as_root "install -D -m 0644 '${ROOT_DIR}/config/systemd/vt-colors.service' /etc/systemd/system/vt-colors.service" || true
+#as_root "systemctl enable vt-colors.service" || true
 
 # 7) SELinux (pam.d)
 echo "[INFO] Restoring SELinux contexts…"
