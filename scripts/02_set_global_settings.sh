@@ -34,13 +34,14 @@ system-db:local
 PROFILE
 fi
 
-install -d -m 0755 /etc/dconf/db/local.d
+as_user " install -d -m 0755 /etc/dconf/db/local.d
 cat >/etc/dconf/db/local.d/00-fedora-autoconfig-dark <<'DCONF'
 [org/gnome/desktop/interface]
 color-scheme='prefer-dark'
 gtk-theme='Adwaita-dark'
 icon-theme='Adwaita'
 DCONF
+"
 
 dconf update
 
