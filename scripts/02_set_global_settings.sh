@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Step 2 — Dark mode, locales/mesures/heure, clavier (per-user only)
+# Step 2 — Dark mode, locals/metrics/clock, layout (per-user only)
 
 . "$(dirname "$0")/00_helpers.sh"
 
 : "${TARGET_USER:?TARGET_USER must be set (from .env or sudo env)}"
 UHOME="$(user_home "$TARGET_USER")"
 
-# Variables .env obligatoires
+# Check .env input variables
 : "${LANG_DEFAULT:?Missing LANG_DEFAULT in .env}"   # ex: en_US.UTF-8
 : "${FORMATS:?Missing FORMATS in .env}"             # ex: fr_FR.UTF-8
 : "${CLOCK_FORMAT:?Missing CLOCK_FORMAT in .env}"   # ex: 24h ou 12h"
@@ -16,53 +16,46 @@ UHOME="$(user_home "$TARGET_USER")"
 : "${KEYBOARD_VARIANT:?Missing KEYBOARD_VARIANT in .env}"   # peut être ""
 : "${KEYBOARD_OPTIONS:?Missing KEYBOARD_OPTIONS in .env}"   # peut être ""
 
-# ID XKB pour gsettings (ex: "fr+oss" ou "us")
+# ID XKB for gsettings (ex: "fr+oss" or "us")
 _XKB_ID="$KEYBOARD_LAYOUT"
 if [[ -n "$KEYBOARD_VARIANT" ]]; then
   _XKB_ID="${KEYBOARD_LAYOUT}+${KEYBOARD_VARIANT}"
 fi
 
-###############################################################################
 # 1) Dark mode (per-user)
-###############################################################################
 as_root "dnf install -y adw-gtk3-theme"
 
-# GNOME/libadwaita → mode sombre global
+# GNOME/libadwaita → dark mode
 as_user "dbus-run-session gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'"
 
-# Icônes et curseur par défaut
+# Icons & cursor
 as_user "dbus-run-session gsettings set org.gnome.desktop.interface icon-theme 'Adwaita'"
 as_user "dbus-run-session gsettings set org.gnome.desktop.interface cursor-theme 'Adwaita'"
 
-# Legacy apps (GTK3) → utiliser adw-gtk3-dark
+# Legacy apps (GTK3) → adw-gtk3-dark
 as_user "dbus-run-session gsettings set org.gnome.desktop.interface gtk-theme 'adw-gtk3-dark'"
 
-###############################################################################
-# 2) Locales / formats / unités (per-user)
-###############################################################################
-
-# a) Formats (comme GNOME Settings) — gsettings org.gnome.system.locale::region
+# 2) Locals / formats / units (per-user)
+# a) Formats — gsettings org.gnome.system.locale::region
 as_user "dbus-run-session gsettings set org.gnome.system.locale region '${FORMATS}' || true"
 
-# b) Format d'horloge (optionnel)
+# b) Clocks format (optionnel)
 as_user "dbus-run-session gsettings set org.gnome.desktop.interface clock-format '${CLOCK_FORMAT}' || true"
 
-# c) Langue d'interface — per-user via environment.d (pas de privilèges root nécessaires)
+# c) Language — per-user via environment.d
 as_user "mkdir -p ~/.config/environment.d"
 as_user "bash -lc 'cat > ~/.config/environment.d/10-locales.conf <<EOF
 LANG=${LANG_DEFAULT}
 EOF'"
 
-###############################################################################
-# 3) Clavier (per-user)
-###############################################################################
+# 3) Keyboard Layout (per-user)
 # Input sources GNOME
 as_user "dbus-run-session gsettings set org.gnome.desktop.input-sources sources \"[('xkb', '$_XKB_ID')]\" || true"
 
-# Options clavier (ex: caps:escape)
+# Options layout (ex: caps:escape)
 if [[ -n "$KEYBOARD_OPTIONS" ]]; then
   as_user "dbus-run-session gsettings set org.gnome.desktop.input-sources xkb-options \"['${KEYBOARD_OPTIONS//,/','}']\" || true"
 fi
 
-echo "[OK] Dark mode, locales/mesures/heure et clavier appliqués pour $TARGET_USER."
-echo "     Déconnexion/reconnexion recommandée pour appliquer les changements."
+echo "[OK] Dark mode, locals/metrics/clock et layout apply for $TARGET_USER."
+echo "     Log-out highly recommended to apply changes."
