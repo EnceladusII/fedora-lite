@@ -18,7 +18,7 @@ as_root "dnf -y remove greetd tuigreet" || true
 
 # 2) Installing dependencies
 echo "[INFO] Installing build/runtime dependencies…"
-as_root "dnf -y install kernel-devel pam-devel libxcb-devel zig xorg-x11-xauth xorg-x11-server-common brightnessctl"
+as_root "dnf -y install kbd kernel-devel pam-devel libxcb-devel zig xorg-x11-xauth xorg-x11-server-common brightnessctl"
 
 # Verify Zig (Ly need 0.14.x)
 if command -v zig >/dev/null 2>&1; then
@@ -68,6 +68,10 @@ if ! test -f /usr/share/wayland-sessions/hyprland.desktop; then
   as_root "install -D -m 0644 '${ROOT_DIR}/config/wayland-sessions/hyprland.desktop' \
     /usr/share/wayland-sessions/hyprland.desktop"
 fi
+
+as_root "install -D -m 0644 '${ROOT_DIR}/config/vtrgb/vtrgb' /etc/vtrgb" || true
+as_root "install -D -m 0644 '${ROOT_DIR}/config/systemd/vt-colors.service' /etc/systemd/system/vt-colors.service" || true
+as_root "systemctl enable vt-colors.service" || true
 
 # 7) SELinux (pam.d)
 echo "[INFO] Restoring SELinux contexts…"

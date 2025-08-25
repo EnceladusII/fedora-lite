@@ -1,0 +1,12 @@
+[Unit]
+Description=Set VT color palette
+DefaultDependencies=no
+After=local-fs.target
+Before=ly.service getty@tty2.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/setvtrgb /etc/vtrgb
+
+[Install]
+WantedBy=multi-user.target
