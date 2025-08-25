@@ -48,4 +48,6 @@ if ((${#skipped[@]})); then
   printf '  - %s\n' "${skipped[@]}"
 fi
 
+as_root "dnf -y autoremove"
+
 echo "[OK] Bloat removal completed."

@@ -13,6 +13,7 @@ gnome-font-viewer
 
 # ---- Media / capture ----
 cheese                 # Webcam
+snapshot
 simple-scan            # Scanner tool
 
 # ---- Tools / utilities ----
