@@ -10,11 +10,11 @@ UHOME="$(user_home "$TARGET_USER")"
 # Check .env input variables
 : "${LANG_DEFAULT:?Missing LANG_DEFAULT in .env}"   # ex: en_US.UTF-8
 : "${FORMATS:?Missing FORMATS in .env}"             # ex: fr_FR.UTF-8
-: "${CLOCK_FORMAT:?Missing CLOCK_FORMAT in .env}"   # ex: 24h ou 12h"
+: "${CLOCK_FORMAT:?Missing CLOCK_FORMAT in .env}"   # ex: 24h or 12h"
 
 : "${KEYBOARD_LAYOUT:?Missing KEYBOARD_LAYOUT in .env}"
-: "${KEYBOARD_VARIANT:?Missing KEYBOARD_VARIANT in .env}"   # peut être ""
-: "${KEYBOARD_OPTIONS:?Missing KEYBOARD_OPTIONS in .env}"   # peut être ""
+: "${KEYBOARD_VARIANT:?Missing KEYBOARD_VARIANT in .env}"   # can be ""
+: "${KEYBOARD_OPTIONS:?Missing KEYBOARD_OPTIONS in .env}"   # can be ""
 
 # ID XKB for gsettings (ex: "fr+oss" or "us")
 _XKB_ID="$KEYBOARD_LAYOUT"

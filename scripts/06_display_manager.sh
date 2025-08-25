@@ -52,9 +52,9 @@ echo "[INFO] Building Ly with Zig as regular user…"
 echo "[INFO] Installing Ly (systemd)…"
 ( cd "${BUILD_DIR}" && as_root "zig build installexe -Dinit_system=systemd" )
 
-# 5) Déployer conf depuis le repo
+# 5) Deploy conf from repo
 echo "[INFO] Deploying Ly config + PAM…"
-as_root "install -D -m 0644 '${ROOT_DIR}/config/ly/config.ini' /etc/ly/config.ini"
+as_root "install -D -m 0644 '${ROOT_DIR}/config/ly/config.${THEME}.ini' /etc/ly/config.ini"
 as_root "install -D -m 0644 '${ROOT_DIR}/config/pam.d/ly'      /etc/pam.d/ly"
 
 # Optional autologin
