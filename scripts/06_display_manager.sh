@@ -18,7 +18,7 @@ as_root "dnf -y remove greetd tuigreet" || true
 
 # 2) Dépendances Fedora (README amont)
 echo "[INFO] Installing build/runtime dependencies…"
-as_root "dnf -y install kernel-devel pam-devel libxcb-devel zig xorg-x11-xauth xorg-x11-server brightnessctl"
+as_root "dnf -y install kernel-devel pam-devel libxcb-devel zig xorg-x11-xauth xorg-x11-server-common brightnessctl"
 
 # Vérif Zig (Ly cible 0.14.x)
 if command -v zig >/dev/null 2>&1; then
