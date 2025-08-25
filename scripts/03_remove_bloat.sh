@@ -51,7 +51,7 @@ fi
 as_root "dnf -y autoremove"
 
 # Remove useless repos
-as_user "dnf -y upgrade \
+as_root "dnf -y upgrade \
     --disablerepo=google-chrome \
     --disablerepo=copr:copr.fedorainfracloud.org:phracek:PyCharm
 "
