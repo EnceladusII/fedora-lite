@@ -8,7 +8,7 @@ run:
 # Étapes individuelles (debug pas-à-pas)
 .PHONY: step1 step2 step3 step4 step5 step6 step7 step8 step9 step10
 step1:  ; bash scripts/01_config_dnf.sh
-step2:  ; bash scripts/02_enable_dark_mode.sh
+step2:  ; bash scripts/02_set_global_settings.sh
 step3:  ; bash scripts/03_remove_bloat.sh
 step4:  ; bash scripts/04_repos_and_codecs.sh
 step5:  ; bash scripts/05_gpu_drivers.sh

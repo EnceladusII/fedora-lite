@@ -30,4 +30,5 @@ EOF
 # System update
 echo "[INFO] Updating system (dnf upgrade)"
 as_root "dnf -y upgrade --refresh"
+as_root "dnf -y autoremove"
 echo "[OK] System up to date"

@@ -11,6 +11,14 @@ DOTS_REPO_URL="${DOTS_REPO:-https://github.com/EnceladusII/caelestia-fedora.git}
 DOTS_BRANCH_NAME="${DOTS_BRANCH:-main}"
 DOTS_ENTRY="${DOTS_SETUP_SCRIPT:-install.fish}"
 
+# 0) Ensure GOPATH is set:
+as_user "grep -qxF '# Personal setups' ~/.bashrc || cat >> ~/.bashrc <<'EOF'
+
+# Personal setups
+export GOPATH=\"\$HOME/.go\"
+export PATH=\"\$GOPATH/bin:\$PATH\"
+EOF"
+
 # 1) Ensure base packages (fish, node/npm, foot)
 as_root "dnf -y install fish npm"
 

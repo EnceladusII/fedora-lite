@@ -8,20 +8,15 @@ ROOT_DIR="$(cd "$DIR/.." && pwd)"
 
 banner() { printf "\n==== %s ====\n" "$1"; }
 
-# System update
-banner "00_system_update"
-echo "[INFO] Updating system (dnf upgrade)"
-as_root "dnf -y upgrade --refresh"
-
 # Steps list
 STEPS=(
   "01_config_dnf"
-  "02_enable_dark_mode"
+  "02_set_global_settings"
   "03_remove_bloat"
   "04_repos_and_codecs"
   "05_gpu_drivers"
-  "07_install_dots"
   "06_display_manager"
+  "07_install_dots"
   "08_install_apps"
   "09_boot_optimize"
   "10_ai_stack"
