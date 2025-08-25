@@ -43,16 +43,21 @@ as_user "dbus-run-session gsettings set org.gnome.desktop.interface gtk-theme 'a
 ###############################################################################
 # 2) Locales / formats / unités (per-user)
 ###############################################################################
+: "${LANG_DEFAULT:?Missing LANG_DEFAULT in .env}"   # ex: en_US.UTF-8
+: "${FORMATS:?Missing FORMATS in .env}"             # ex: fr_FR.UTF-8
+: "${CLOCK_FORMAT:?Missing CLOCK_FORMAT in .env}"   # ex: 24h ou 12h
+
+# a) Formats (comme GNOME Settings) — gsettings org.gnome.system.locale::region
+as_user "dbus-run-session gsettings set org.gnome.system.locale region '${FORMATS}' || true"
+
+# b) Format d'horloge (optionnel)
+as_user "dbus-run-session gsettings set org.gnome.desktop.interface clock-format '${CLOCK_FORMAT}' || true"
+
+# c) Langue d'interface — per-user via environment.d (pas de privilèges root nécessaires)
+as_user "mkdir -p ~/.config/environment.d"
 as_user "bash -lc 'cat > ~/.config/environment.d/10-locales.conf <<EOF
 LANG=${LANG_DEFAULT}
-LC_TIME=${LC_TIME}
-LC_NUMERIC=${LC_NUMERIC}
-LC_MEASUREMENT=${LC_MEASUREMENT}
-LC_PAPER=${LC_PAPER}
 EOF'"
-
-# GNOME: format d’horloge
-as_user "dbus-run-session gsettings set org.gnome.desktop.interface clock-format '${CLOCK_FORMAT}' || true"
 
 ###############################################################################
 # 3) Clavier (per-user)
