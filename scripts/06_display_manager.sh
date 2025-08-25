@@ -18,7 +18,7 @@ fi
 
 # 1) Disable other DMs + greetd/tuigreet
 echo "[INFO] Disabling conflicting display managers…"
-disable_service gdm.service || true
+as root "systemctl disable_service gdm.service" || true
 as_root "systemctl disable --now greetd.service" || true
 
 echo "[INFO] Removing greetd/tuigreet packages if present…"
