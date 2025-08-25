@@ -1,9 +1,0 @@
-# Tuigreet (TUI) config
-time = true
-remember = true
-remember_session = true
-asterisks = true
-user_menu = true
-
-# Où chercher les sessions .desktop
-sessions = ["/usr/share/wayland-sessions", "/usr/share/xsessions"]
