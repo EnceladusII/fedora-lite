@@ -1,0 +1,2 @@
+aunetx/deezer-linux
+Vencord/Vesktop

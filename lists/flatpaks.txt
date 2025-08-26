@@ -1,8 +1,7 @@
-# Control for Sonos
-org.jakub.kundera.Noson
-
-# Science / Bioinfo
 org.pymol.PyMOL
-
-# Mail
 ch.protonmail.protonmail-bridge
+org.pymol.PyMOL
+it.mijorus.gearlever
+dev.lizardbyte.app.Sunshine
+com.moonlight_stream.Moonlight
+io.github.pemsley.coot

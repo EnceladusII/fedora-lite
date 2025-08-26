@@ -3,6 +3,8 @@ set -euo pipefail
 # Install favorite apps from lists/{rpm-packages.txt, flatpaks.txt, appimages.txt}
 # Runs as user, elevates only with as_root when required.
 
+Add LACT/Nvidia/ControlCenter chooser
+
 . "$(dirname "$0")/00_helpers.sh"
 
 # --- RPM packages ---

@@ -1,2 +1,2 @@
-# Unified messenger
-https://github.com/beeper/beeper-launcher/releases/latest/download/Beeper-x86_64.AppImage
+https://api.beeper.com/desktop/download/linux/x64/stable/com.automattic.beeper.desktop
+janbar/noson-app

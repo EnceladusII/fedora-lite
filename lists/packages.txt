@@ -1,0 +1,10 @@
+thunderbird
+nextcloud
+yumex                 # Yum Extender GUI
+timeshift
+gnome-tweaks
+zen-browser
+zed
+nextcloud-client
+protonvpn-cli
+pavucontrol
