@@ -79,7 +79,7 @@ gpgcheck=1
 gpgkey=https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/0x54840598.pub.asc
 skip_if_unavailable=False
 EOF
-    echo \"[OK] dnf.conf tuned (backup: $TUX_REPO.bak.$ts)\"
+  echo \"[OK] dnf.conf tuned (backup: $TUX_REPO.bak.$ts)\"
 '"
 
   curl https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/0x54840598.pub.asc /tmp/0x54840598.pub.asc
