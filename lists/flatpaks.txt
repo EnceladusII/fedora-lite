@@ -5,3 +5,5 @@ it.mijorus.gearlever
 dev.lizardbyte.app.Sunshine
 com.moonlight_stream.Moonlight
 io.github.pemsley.coot
+dev.zed.Zed
+app.zen_browser.zen
