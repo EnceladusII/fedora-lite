@@ -391,6 +391,7 @@ done < <(apply_list "$APPIMG_LIST")
 fi
 
 # ---- Gear Lever CLI helper (non interactif) --------------------------------
+as_root "dnf -y install fuse fuse-libs"
 GL_CMD=""
 if command -v gearlever >/dev/null 2>&1; then
   GL_CMD="gearlever"
