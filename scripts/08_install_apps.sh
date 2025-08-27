@@ -275,11 +275,55 @@ if [[ -f "$APPIMG_LIST" ]]; then
     [[ "$1" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
   }
 
+  # --- helpers patch pour URL directes ---
+  is_appimage_like_url() {
+    local u="${1,,}"
+    [[ "$u" =~ \.appimage($|\?|/|%2f|%3f) ]]
+  }
+
+  guess_appimage_filename() {
+    local url="$1"
+    local header final_name
+
+    header="$(curl -sSIL -o /dev/null -w '%header{content-disposition}\n%header{location}\n' "$url" || true)"
+
+    final_name="$(printf '%s' "$header" \
+      | awk -F'filename\\*=|filename=' 'NF>1{print $2}' \
+      | head -n1 \
+      | sed -E 's/^UTF-8\\'\\''//; s/;.*$//; s/"//g' \
+      | sed -E 's/\r$//' )"
+
+    if [[ -n "$final_name" ]]; then
+      final_name="$(printf '%b' "${final_name//%/\\x}")"
+    fi
+
+    if [[ -z "$final_name" ]]; then
+      local last_loc
+      last_loc="$(printf '%s' "$header" | tail -n1 | tr -d '\r')"
+      if is_appimage_like_url "${last_loc:-}"; then
+        final_name="${last_loc##*/}"
+        final_name="${final_name%%\?*}"
+      fi
+    fi
+
+    if [[ -z "$final_name" ]]; then
+      final_name="${url##*/}"
+      final_name="${final_name%%\?*}"
+    fi
+
+    if [[ -z "$final_name" || "$final_name" == "download" || "$final_name" == "latest" ]]; then
+      final_name="AppImage-$(date +%s).AppImage"
+    fi
+
+    printf '%s' "$final_name"
+  }
+
   download_appimage() {
     local url="$1"
     local target="$2"
     echo "[INFO] Downloading AppImage: $url"
-    as_user "wget -O '$target' '$url'"
+    as_user "curl -fL --retry 3 --retry-delay 2 -C - -o '$target.part' '$url' || rm -f '$target.part'"
+    as_user "test -s '$target.part' && mv -f '$target.part' '$target'"
     as_user "chmod +x '$target'"
   }
 
@@ -294,24 +338,34 @@ if [[ -f "$APPIMG_LIST" ]]; then
         echo "[WARN] No AppImage found in release of $entry"
         continue
       fi
+      fname="${url##*/}"
+      fname="${fname%%\?*}"
+      target="$APPDIR/$fname"
+
+      if [[ -f "$target" ]]; then
+        echo "[SKIP] Déjà présent: $target"
+        continue
+      fi
+
+      download_appimage "$url" "$target"
     else
       url="$entry"
-      if [[ ! "$url" =~ \.AppImage($|\?) ]]; then
+
+      if ! is_appimage_like_url "$url"; then
         echo "[WARN] Unrecognize as AppImage: $url"
         continue
       fi
+
+      fname="$(guess_appimage_filename "$url")"
+      target="$APPDIR/$fname"
+
+      if [[ -f "$target" ]]; then
+        echo "[SKIP] Déjà présent: $target"
+        continue
+      fi
+
+      download_appimage "$url" "$target"
     fi
-
-    fname="${url##*/}"
-    fname="${fname%%\?*}"
-    target="$APPDIR/$fname"
-
-    if [[ -f "$target" ]]; then
-      echo "[SKIP] Déjà présent: $target"
-      continue
-    fi
-
-    download_appimage "$url" "$target"
   done < <(apply_list "$APPIMG_LIST")
 fi
 
