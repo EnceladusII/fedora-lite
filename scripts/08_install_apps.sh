@@ -390,8 +390,7 @@ while IFS= read -r entry; do
 done < <(apply_list "$APPIMG_LIST")
 fi
 
-# ---- Gear Lever CLI helper -----------------------------------------------
-# Utilise l'alias si présent, sinon passe par flatpak run.
+# ---- Gear Lever CLI helper (non interactif) --------------------------------
 GL_CMD=""
 if command -v gearlever >/dev/null 2>&1; then
   GL_CMD="gearlever"
@@ -399,61 +398,80 @@ else
   GL_CMD="flatpak run it.mijorus.gearlever"
 fi
 
-# Sanity check
-if ! $GL_CMD --help >/dev/null 2>&1; then
-  echo "[ERROR] Gear Lever introuvable. Installe via: flatpak install flathub it.mijorus.gearlever"
-  exit 1
+# Option non-interactive si dispo
+GL_YES=""
+if $GL_CMD --help 2>/dev/null | grep -q -- '--assume-yes'; then
+  GL_YES="--assume-yes"
 fi
 
-# ---- Intégration & mises à jour de toutes les AppImages du dossier --------
+# Détecte la signature AppImage (même sans extension)
+is_appimage_file() {
+  local file="$1"
+  # magic "AI" au début du fichier (suffisant en pratique)
+  head -c 2 "$file" 2>/dev/null | grep -q '^AI'
+}
+
 integrate_and_update_appimages() {
   local appdir="${APPDIR:-$HOME/.AppImages}"
-  [[ -d "$appdir" ]] || { echo "[INFO] Rien à faire, dossier inexistant: $appdir"; return 0; }
+  [[ -d "$appdir" ]] || { echo "[INFO] Rien à intégrer: $appdir inexistant"; return 0; }
 
-  echo "[INFO] Scan du dossier: $appdir"
+  echo "[INFO] Intégration/MAJ via Gear Lever dans: $appdir"
 
-  # Liste des installés actuelle (on la met en cache pour accélérer les checks)
-  # Le CLI n'a pas (encore) de sortie JSON, on fait un match tolérant sur le nom de fichier.
+  # Cache des intégrés pour accélérer les checks
   local installed
   installed="$($GL_CMD --list-installed 2>/dev/null || true)"
 
-  # Parcours des fichiers exécutables (ignore .zsync et autres)
-  # NB: certains AppImages n'ont pas l'extension .AppImage, on ne filtre pas par extension.
+  # On parcourt uniquement des fichiers réguliers, pas .desktop/.zsync
+  # et on garde uniquement les vrais AppImages (par signature ou extension)
   while IFS= read -r -d '' f; do
-    # On ne traite que les fichiers réguliers lisibles
     [[ -f "$f" && -r "$f" ]] || continue
-    local base="$(basename "$f")"
+    case "$f" in
+      *.desktop|*.zsync) continue ;;
+    esac
 
+    # Valide AppImage (signature) OU extension .AppImage
+    if ! is_appimage_file "$f" && [[ ! "$f" =~ \.AppImage$ ]]; then
+      # pas une AppImage → skip silencieux
+      continue
+    fi
+
+    # s'assurer du +x
+    [[ -x "$f" ]] || chmod +x "$f" 2>/dev/null || true
+
+    local base="$(basename "$f")"
     echo "[INFO] Détection: $base"
 
-    # Est-ce déjà intégré ? On cherche une occurrence du nom de fichier dans la liste
     if printf '%s\n' "$installed" | grep -Fq -- "$base"; then
       echo "  └─ Déjà intégré → vérif des mises à jour…"
-      if $GL_CMD --update "$f"; then
-        echo "     ✓ À jour (ou mis à jour avec succès)"
+      if $GL_CMD --update $GL_YES "$f" >/dev/null 2>&1; then
+        echo "     ✓ À jour (ou mis à jour)"
       else
-        echo "     ⚠️  Échec update (peut-être pas de source d’update connue)"
+        echo "     ⚠️  Update indisponible (source non reconnue)"
       fi
     else
       echo "  └─ Pas intégré → intégration…"
-      if $GL_CMD --integrate "$f"; then
-        echo "     ✓ Intégré au menu"
-        # Après intégration, on tente une mise à jour immédiate (utile si un update URL est devinable)
-        $GL_CMD --update "$f" >/dev/null 2>&1 || true
-        # Rafraîchir le cache 'installed' pour les prochaines itérations
+      if $GL_CMD --integrate $GL_YES "$f" </dev/null; then
+        echo "     ✓ Intégré"
+        # rafraîchir la liste pour la suite
         installed="$($GL_CMD --list-installed 2>/dev/null || printf '%s' "$installed")"
+        # tentative d'update immédiate (si source détectable)
+        $GL_CMD --update $GL_YES "$f" >/dev/null 2>&1 || true
       else
-        echo "     ❌ Échec d'intégration (fichier: $f)"
+        # Certains anciens builds n'ont pas --assume-yes : fallback avec yes
+        if command -v yes >/dev/null 2>&1 && yes | $GL_CMD --integrate "$f" >/dev/null 2>&1; then
+          echo "     ✓ Intégré (fallback yes)"
+          installed="$($GL_CMD --list-installed 2>/dev/null || printf '%s' "$installed")"
+        else
+          echo "     ❌ Échec d'intégration (fichier: $f)"
+        fi
       fi
     fi
-  done < <(find "$appdir" -maxdepth 1 -type f ! -name '*.zsync' -print0)
+  done < <(find "$appdir" -maxdepth 1 -type f -print0)
 
-  # Optionnel: afficher un récap des updates restantes détectées par Gear Lever
-  echo "[INFO] Recherche des mises à jour disponibles (récap)…"
+  echo "[INFO] Récap des mises à jour disponibles…"
   $GL_CMD --list-updates || true
 }
 
-# Appel
 integrate_and_update_appimages
 
 echo "[OK] External AppImages installed"
