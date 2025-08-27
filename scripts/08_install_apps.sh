@@ -188,15 +188,15 @@ install_latest_github_rpm() {
   fi
 
   if [[ -z "$url" || "$url" == "null" ]]; then
-    echo "[WARN] Aucun asset .rpm trouvé pour $repo"
+    echo "[WARN] No asset .rpm found in $repo"
     return 0
   fi
 
   local rpm_file="$TMPDIR/$(basename "$url")"
-  echo "[INFO] Téléchargement -> $rpm_file"
+  echo "[INFO] Downloading -> $rpm_file"
   curl -fL -o "$rpm_file" "$url"
 
-  echo "[INFO] Installation -> $(basename "$rpm_file")"
+  echo "[INFO] Installing -> $(basename "$rpm_file")"
   as_root "dnf -y install '$rpm_file'"
 }
 
@@ -275,7 +275,6 @@ if [[ -f "$APPIMG_LIST" ]]; then
     [[ "$1" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
   }
 
-  # --- helpers patch pour URL directes ---
   is_appimage_like_url() {
     local u="${1,,}"
     [[ "$u" =~ \.appimage($|\?|/|%2f|%3f) ]]
@@ -321,7 +320,6 @@ if [[ -f "$APPIMG_LIST" ]]; then
 
   is_appimage_file() {
     local file="$1"
-    # Vérifie la magie AppImage dans les premiers octets
     if head -c 3 "$file" 2>/dev/null | grep -q '^AI'; then
       return 0
     else
@@ -336,13 +334,12 @@ if [[ -f "$APPIMG_LIST" ]]; then
     as_user "curl -fL --retry 3 --retry-delay 2 -C - -o '$target.part' '$url' || rm -f '$target.part'"
     as_user "test -s '$target.part' && mv -f '$target.part' '$target'"
 
-    # Vérifie si c'est bien un AppImage même si l'extension n'est pas présente
     if as_user "[ -f '$target' ] && ! [[ '$target' =~ \.AppImage$ ]]"; then
       if is_appimage_file "$target"; then
         new_target="${target}.AppImage"
         as_user "mv -f '$target' '$new_target'"
         target="$new_target"
-        echo "[INFO] Renommé en $target"
+        echo "[INFO] To --> $target"
       fi
     fi
 
@@ -366,7 +363,7 @@ while IFS= read -r entry; do
     target="$APPDIR/$fname"
 
     if [[ -f "$target" ]]; then
-      echo "[SKIP] Déjà présent: $target"
+      echo "[SKIP] Was present: $target"
       continue
     fi
 
@@ -374,14 +371,11 @@ while IFS= read -r entry; do
 
   else
     url="$entry"
-
-    # ⚠️ Ne bloque plus sur le « type » d’URL : on tente le download
-    #    (le nom est déduit depuis Content-Disposition/Location/URL)
     fname="$(guess_appimage_filename "$url")"
     target="$APPDIR/$fname"
 
     if [[ -f "$target" ]]; then
-      echo "[SKIP] Déjà présent: $target"
+      echo "[SKIP] Was present: $target"
       continue
     fi
 
