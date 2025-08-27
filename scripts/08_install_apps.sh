@@ -115,12 +115,13 @@ echo "[OK] Packages installed"
 
 # --- Flatpaks (system-wide install) ---
 FLAT_LIST="$ROOT_DIR/lists/flatpaks.txt"
+
 if [[ -f "$FLAT_LIST" ]]; then
   while IFS= read -r app; do
     [[ -z "${app// /}" || "$app" =~ ^# ]] && continue
-    if ! flatpak list --system | grep -q "$app"; then
-      echo "[INFO] Installing Flatpak: $app"
-      as_root "flatpak install -y $app"
+    if ! flatpak list --system --app --columns=application | grep -Fxq "$app"; then
+      echo "[INFO] Installing Flatpak (system): $app"
+      as_root "flatpak install -y --noninteractive --system flathub \"$app\""
     fi
   done < <(apply_list "$FLAT_LIST")
 fi
