@@ -60,6 +60,7 @@ if [[ "$SETUP" == "laptop" ]]; then
   as_root "dnf -y update"
   TUX_REPO="/etc/yum.repos.d/tuxedo.repo"
   FEDORA_VERSION=$(rpm -E %fedora)
+  ts="$(date +%s)"
 
   as_root "bash -lc '
     set -euo pipefail
