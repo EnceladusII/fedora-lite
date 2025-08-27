@@ -85,7 +85,7 @@ if [[ "$SETUP" == "laptop" ]]; then
   as_root "rpm --import /etc/0x54840598.pub.asc"
   as_root "dnf -y install tuxedo-drivers tuxedo-control-center"
 
-  if [[ "$gpu" == "nvidia"]]; then
+  if [[ "$gpu" == "nvidia" ]]; then
       git clone https://github.com/wildtruc/nvidia-prime-select.git $UHOME/.local/share/nvidia-prime-select
       cd $UHOME/.local/share/nvidia-prime-select
       as_root "make install"
