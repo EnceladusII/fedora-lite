@@ -58,7 +58,7 @@ if [[ "$SETUP" == "laptop" ]]; then
 
   # Add profiles switch selector (for tuxedo laptops):
   if [[ -f /sys/class/dmi/id/sys_vendor ]] && grep -qi "tuxedo" /sys/class/dmi/id/sys_vendor; then
-    echo "[OK] Tuxedo Computer found"
+    echo "[OK] Tuxedo Device found"
     as_root "dnf -y update"
     TUX_REPO="/etc/yum.repos.d/tuxedo.repo"
     FEDORA_VERSION=$(rpm -E %fedora)
@@ -83,6 +83,8 @@ EOF
     wget https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/0x54840598.pub.asc -O /tmp/0x54840598.pub.asc
     as_root "rpm --import /tmp/0x54840598.pub.asc"
     as_root "dnf -y install tuxedo-drivers tuxedo-control-center"
+  else
+      echo "[OK] Not a Tuxedo Device, check your system vendor profile selector"
   fi
 
   if [[ "$gpu" == "nvidia" ]]; then
