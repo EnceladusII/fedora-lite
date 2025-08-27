@@ -349,46 +349,45 @@ if [[ -f "$APPIMG_LIST" ]]; then
     as_user "chmod +x '$target'"
   }
 
-  # -------- main loop --------
-  while IFS= read -r entry; do
-    [[ -z "${entry// /}" || "$entry" =~ ^# ]] && continue
+# -------- main loop --------
+while IFS= read -r entry; do
+  [[ -z "${entry// /}" || "$entry" =~ ^# ]] && continue
 
-    if is_github_repo_ref "$entry"; then
-      echo "[INFO] Resolving GitHub AppImage for: $entry"
-      url="$(resolve_github_appimage_url "$entry" || true)"
-      if [[ -z "$url" ]]; then
-        echo "[WARN] No AppImage found in release of $entry"
-        continue
-      fi
-      fname="${url##*/}"
-      fname="${fname%%\?*}"
-      target="$APPDIR/$fname"
-
-      if [[ -f "$target" ]]; then
-        echo "[SKIP] Déjà présent: $target"
-        continue
-      fi
-
-      download_appimage "$url" "$target"
-    else
-      url="$entry"
-
-      if ! is_appimage_like_url "$url"; then
-        echo "[WARN] Unrecognize as AppImage: $url"
-        continue
-      fi
-
-      fname="$(guess_appimage_filename "$url")"
-      target="$APPDIR/$fname"
-
-      if [[ -f "$target" ]]; then
-        echo "[SKIP] Déjà présent: $target"
-        continue
-      fi
-
-      download_appimage "$url" "$target"
+  if is_github_repo_ref "$entry"; then
+    echo "[INFO] Resolving GitHub AppImage for: $entry"
+    url="$(resolve_github_appimage_url "$entry" || true)"
+    if [[ -z "$url" ]]; then
+      echo "[WARN] No AppImage found in release of $entry"
+      continue
     fi
-  done < <(apply_list "$APPIMG_LIST")
+
+    fname="${url##*/}"
+    fname="${fname%%\?*}"
+    target="$APPDIR/$fname"
+
+    if [[ -f "$target" ]]; then
+      echo "[SKIP] Déjà présent: $target"
+      continue
+    fi
+
+    download_appimage "$url" "$target"
+
+  else
+    url="$entry"
+
+    # ⚠️ Ne bloque plus sur le « type » d’URL : on tente le download
+    #    (le nom est déduit depuis Content-Disposition/Location/URL)
+    fname="$(guess_appimage_filename "$url")"
+    target="$APPDIR/$fname"
+
+    if [[ -f "$target" ]]; then
+      echo "[SKIP] Déjà présent: $target"
+      continue
+    fi
+
+    download_appimage "$url" "$target"
+  fi
+done < <(apply_list "$APPIMG_LIST")
 fi
 
 echo "[OK] External AppImages installed"
