@@ -73,10 +73,10 @@ if [[ "$SETUP" == "laptop" ]]; then
     cat >> \"$TUX_REPO\" <<EOF
 [tuxedo]
 name=tuxedo
-baseurl=https//rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/x86_64/base
+baseurl=https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/x86_64/base
 enabled=1
 gpgcheck=1
-gpgkey=https//rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/0x54840598.pub.asc
+gpgkey=https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/0x54840598.pub.asc
 skip_if_unavailable=False
 EOF
     echo \"[OK] dnf.conf tuned (backup: $TUX_REPO.bak.$ts)\"
