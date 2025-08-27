@@ -392,6 +392,84 @@ fi
 
 # ---- Gear Lever CLI helper (non interactif) --------------------------------
 as_root "dnf -y install fuse fuse-libs"
+# --- Helpers AppImage -------------------------------------------------------
+is_appimage_file() {
+  # vrai AppImage: commence par "AI"
+  head -c 2 "$1" 2>/dev/null | grep -q '^AI'
+}
+
+appimage_pretty_name() {
+  # Extrait le Name= depuis le .desktop interne (fallback: basename sans suffixes)
+  local f="$1"
+  local tmp
+  tmp="$(mktemp -d)"
+  # extraction non verbeuse; certains runtimes affichent sur stderr → 2>/dev/null
+  if "$f" --appimage-extract >/dev/null 2>&1; then
+    # l’extraction crée ./squashfs-root dans PWD
+    if [[ -d squashfs-root ]]; then
+      # on cherche le .desktop principal
+      local desk
+      desk="$(ls -1 squashfs-root/*.desktop squashfs-root/usr/share/applications/*.desktop 2>/dev/null | head -n1)"
+      if [[ -n "$desk" ]]; then
+        # Priorité à Name[en], sinon Name générique
+        local name
+        name="$(grep -E '^Name(\[en(_[A-Za-z]+)?\])?=' "$desk" | head -n1 | sed -E 's/^Name(\[.*\])?=//')"
+        name="${name:-$(grep -E '^Name=' "$desk" | head -n1 | sed -E 's/^Name=//')}"
+        if [[ -n "$name" ]]; then
+          # Nettoyage
+          name="$(echo "$name" | sed -E 's/[[:space:]]+/ /g; s/^[[:space:]]+|[[:space:]]+$//g; s/[^A-Za-z0-9._+ -]/-/g')"
+          echo "$name"
+          rm -rf squashfs-root
+          return 0
+        fi
+      fi
+      rm -rf squashfs-root
+    fi
+  fi
+  # Fallback: nom depuis le fichier
+  local base="${f##*/}"
+  base="${base%.AppImage}"
+  base="$(echo "$base" | sed -E 's/[-_.](x86_64|amd64|aarch64|arm64|armv7|armhf|linux|ubuntu|jammy|focal|latest)//Ig')"
+  base="$(echo "$base" | sed -E 's/[[:space:]]+/ /g; s/[^A-Za-z0-9._+ -]/-/g')"
+  echo "$base"
+}
+
+normalize_appimage_filename() {
+  # Renomme en "<Name>[-Version].AppImage" si possible, sinon juste "<Name>.AppImage"
+  local f="$1"
+  local dir base name ver new
+  dir="$(dirname "$f")"
+  base="$(basename "$f")"
+  name="$(appimage_pretty_name "$f")"
+
+  # Essaie d’extraire une version depuis le nom d’origine
+  ver="$(echo "$base" | sed -nE 's/.*[^0-9]([0-9]+\.[0-9]+(\.[0-9]+)?([._-]?(beta|rc)[0-9]*)?).*/\1/ip' | head -n1 | tr '[:upper:]' '[:lower:]' | tr '_' '-')"
+  # Construit un nom court et propre
+  if [[ -n "$ver" ]]; then
+    new="${name}-${ver}.AppImage"
+  else
+    new="${name}.AppImage"
+  fi
+  # compactage des espaces / tirets
+  new="$(echo "$new" | sed -E 's/[[:space:]]+/-/g; s/-+/-/g; s/^-+|-+$//g')"
+
+  # Si le nom ne change pas vraiment, ne rien faire
+  if [[ "$base" == "$new" ]]; then
+    echo "$f"
+    return 0
+  fi
+
+  local target="$dir/$new"
+  if mv -f -- "$f" "$target"; then
+    echo "$target"
+    return 0
+  else
+    echo "$f"
+    return 0
+  fi
+}
+
+# --- Gear Lever CLI ---------------------------------------------------------
 GL_CMD=""
 if command -v gearlever >/dev/null 2>&1; then
   GL_CMD="gearlever"
@@ -399,18 +477,11 @@ else
   GL_CMD="flatpak run it.mijorus.gearlever"
 fi
 
-# Option non-interactive si dispo
+# option non-interactive si dispo
 GL_YES=""
 if $GL_CMD --help 2>/dev/null | grep -q -- '--assume-yes'; then
   GL_YES="--assume-yes"
 fi
-
-# Détecte la signature AppImage (même sans extension)
-is_appimage_file() {
-  local file="$1"
-  # magic "AI" au début du fichier (suffisant en pratique)
-  head -c 2 "$file" 2>/dev/null | grep -q '^AI'
-}
 
 integrate_and_update_appimages() {
   local appdir="${APPDIR:-$HOME/.AppImages}"
@@ -418,56 +489,58 @@ integrate_and_update_appimages() {
 
   echo "[INFO] Intégration/MAJ via Gear Lever dans: $appdir"
 
-  # Cache des intégrés pour accélérer les checks
+  # Liste actuelle pour éviter ré-intégrer
   local installed
   installed="$($GL_CMD --list-installed 2>/dev/null || true)"
 
-  # On parcourt uniquement des fichiers réguliers, pas .desktop/.zsync
-  # et on garde uniquement les vrais AppImages (par signature ou extension)
+  # Ne prendre que des candidats AppImage: .AppImage OU exécutable (pour ceux sans extension)
   while IFS= read -r -d '' f; do
     [[ -f "$f" && -r "$f" ]] || continue
     case "$f" in
       *.desktop|*.zsync) continue ;;
     esac
 
-    # Valide AppImage (signature) OU extension .AppImage
+    # S’assurer que c’est exécutable
+    [[ -x "$f" ]] || chmod +x "$f" 2>/dev/null || true
+
+    # Vérifier AppImage (signature) ou extension .AppImage
     if ! is_appimage_file "$f" && [[ ! "$f" =~ \.AppImage$ ]]; then
-      # pas une AppImage → skip silencieux
+      # 🔎 Diagnostic pour cas comme "beeper" si pas reconnu
+      echo "[SKIP] $(basename "$f") n'est pas détecté comme AppImage (signature 'AI' absente)."
       continue
     fi
 
-    # s'assurer du +x
-    [[ -x "$f" ]] || chmod +x "$f" 2>/dev/null || true
-
+    # ➜ Renommer proprement pour éviter les noms à rallonge
+    f="$(normalize_appimage_filename "$f")"
     local base="$(basename "$f")"
-    echo "[INFO] Détection: $base"
+    echo "[INFO] Candidat: $base"
 
     if printf '%s\n' "$installed" | grep -Fq -- "$base"; then
       echo "  └─ Déjà intégré → vérif des mises à jour…"
       if $GL_CMD --update $GL_YES "$f" >/dev/null 2>&1; then
         echo "     ✓ À jour (ou mis à jour)"
       else
-        echo "     ⚠️  Update indisponible (source non reconnue)"
+        echo "     ⚠️  Update indisponible pour $base"
       fi
     else
-      echo "  └─ Pas intégré → intégration…"
-      if $GL_CMD --integrate $GL_YES "$f" </dev/null; then
+      echo "  └─ Intégration…"
+      if $GL_CMD --integrate $GL_YES "$f" </dev/null 2>/dev/null; then
         echo "     ✓ Intégré"
-        # rafraîchir la liste pour la suite
         installed="$($GL_CMD --list-installed 2>/dev/null || printf '%s' "$installed")"
-        # tentative d'update immédiate (si source détectable)
-        $GL_CMD --update $GL_YES "$f" >/dev/null 2>&1 || true
       else
-        # Certains anciens builds n'ont pas --assume-yes : fallback avec yes
+        # fallback si pas de --assume-yes
         if command -v yes >/dev/null 2>&1 && yes | $GL_CMD --integrate "$f" >/dev/null 2>&1; then
           echo "     ✓ Intégré (fallback yes)"
           installed="$($GL_CMD --list-installed 2>/dev/null || printf '%s' "$installed")"
         else
-          echo "     ❌ Échec d'intégration (fichier: $f)"
+          echo "     ❌ Échec d'intégration: $base"
         fi
       fi
+
+      # Tente une MAJ immédiate si source détectable
+      $GL_CMD --update $GL_YES "$f" >/dev/null 2>&1 || true
     fi
-  done < <(find "$appdir" -maxdepth 1 -type f -print0)
+  done < <(find "$appdir" -maxdepth 1 -type f \( -iname '*.AppImage' -o -perm -u+x \) ! -iname '*.zsync' -print0)
 
   echo "[INFO] Récap des mises à jour disponibles…"
   $GL_CMD --list-updates || true
