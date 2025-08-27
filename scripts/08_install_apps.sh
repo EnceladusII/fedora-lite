@@ -285,18 +285,21 @@ if [[ -f "$APPIMG_LIST" ]]; then
     local url="$1"
     local header final_name
 
-    header="$(curl -sSIL -o /dev/null -w '%header{content-disposition}\n%header{location}\n' "$url" || true)"
+    header="$(curl -sSIL -o /dev/null \
+      -w '%header{content-disposition}\n%header{location}\n' "$url" || true)"
 
     final_name="$(printf '%s' "$header" \
       | awk -F'filename\\*=|filename=' 'NF>1{print $2}' \
       | head -n1 \
-      | sed -E 's/^UTF-8\\'\\''//; s/;.*$//; s/"//g' \
+      | sed -E "s/^UTF-8''//; s/;.*$//; s/\"//g" \
       | sed -E 's/\r$//' )"
 
+    # Décoder %xx si présent (filename* encodé URL)
     if [[ -n "$final_name" ]]; then
       final_name="$(printf '%b' "${final_name//%/\\x}")"
     fi
 
+    # Fallback sur Location: si pas trouvé
     if [[ -z "$final_name" ]]; then
       local last_loc
       last_loc="$(printf '%s' "$header" | tail -n1 | tr -d '\r')"
@@ -306,11 +309,13 @@ if [[ -f "$APPIMG_LIST" ]]; then
       fi
     fi
 
+    # Fallback sur URL brute
     if [[ -z "$final_name" ]]; then
       final_name="${url##*/}"
       final_name="${final_name%%\?*}"
     fi
 
+    # Dernier fallback si on reste sur "download" ou vide
     if [[ -z "$final_name" || "$final_name" == "download" || "$final_name" == "latest" ]]; then
       final_name="AppImage-$(date +%s).AppImage"
     fi
