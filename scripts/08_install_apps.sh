@@ -56,7 +56,7 @@ if [[ "$SETUP" == "laptop" ]]; then
   as_root "systemctl enable --now tlp"
   as_root "sudo tlp start"
 
-  # Add profiles switch selector:
+  # Add profiles switch selector (for tuxedo laptops):
   if [[ -f /sys/class/dmi/id/sys_vendor ]] && grep -qi "tuxedo" /sys/class/dmi/id/sys_vendor; then
     echo "[OK] Tuxedo Computer found"
     as_root "dnf -y update"
