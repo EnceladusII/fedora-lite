@@ -62,30 +62,20 @@ if [[ "$SETUP" == "laptop" ]]; then
   FEDORA_VERSION=$(rpm -E %fedora)
   ts="$(date +%s)"
 
-as_root "bash -lc '
-  set -euo pipefail
-
-  : \"\${TUX_REPO:?TUX_REPO is required}\"
-  : \"\${FEDORA_VERSION:?FEDORA_VERSION is required}\"
-  : \"\${ts:?ts is required}\"
-
-  [[ -f \"\$TUX_REPO\" ]] || touch \"\$TUX_REPO\"
-  cp -a \"\$TUX_REPO\" \"\$TUX_REPO.bak.\$ts\"
-
-  if ! grep -q \"^\\[tuxedo\\]\" \"\$TUX_REPO\"; then
-    cat >> \"\$TUX_REPO\" <<EOF
+  as_root "bash -lc '
+    set -euo pipefail
+    [[ -f \"$TUX_REPO\" ]] || touch \"$TUX_REPO\"
+    cp -a \"$TUX_REPO\" \"$TUX_REPO.bak.$ts\"
+    cat >> \"$TUX_REPO\" <<EOF
 [tuxedo]
-name=TUXEDO Computers Repository
-baseurl=https://rpm.tuxedocomputers.com/fedora/\$FEDORA_VERSION/x86_64/base
+name=tuxedo
+baseurl=https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/x86_64/base
 enabled=1
 gpgcheck=1
-gpgkey=https://rpm.tuxedocomputers.com/fedora/\$FEDORA_VERSION/0x54840598.pub.asc
+gpgkey=https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/0x54840598.pub.asc
 skip_if_unavailable=False
 EOF
-    echo \"[OK] repo section [tuxedo] ajoutée dans \$TUX_REPO (backup: \$TUX_REPO.bak.\$ts)\"
-  else
-    echo \"[SKIP] section [tuxedo] déjà présente dans \$TUX_REPO (backup: \$TUX_REPO.bak.\$ts)\"
-  fi
+  echo \"[OK] dnf.conf tuned (backup: $TUX_REPO.bak.$ts)\"
 '"
 
   curl https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/0x54840598.pub.asc /tmp/0x54840598.pub.asc
