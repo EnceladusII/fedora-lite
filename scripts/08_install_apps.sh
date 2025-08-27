@@ -220,7 +220,7 @@ if [[ -f "$APPIMG_LIST" ]]; then
   APPDIR="$(user_home "$TARGET_USER")/.AppImages"
   as_user "mkdir -p '$APPDIR'"
 
-  # -------- helpers --------
+  # -------- helpers (GitHub) --------
   gh_api() {
     local url="$1"
     curl -fsSL \
@@ -280,56 +280,30 @@ if [[ -f "$APPIMG_LIST" ]]; then
     [[ "$1" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
   }
 
-  is_appimage_like_url() {
-    local u="${1,,}"
-    [[ "$u" =~ \.appimage($|\?|/|%2f|%3f) ]]
+  # -------- helpers (AppImages locales) --------
+  is_appimage_file() {
+    local file="$1"
+    head -c 2 "$file" 2>/dev/null | grep -q '^AI'
   }
 
   guess_appimage_filename() {
     local url="$1"
-    local header final_name
+    local final_url header final_name
 
-    header="$(curl -sSIL -o /dev/null \
-      -w '%header{content-disposition}\n%header{location}\n' "$url" || true)"
+    # suivre redirections pour choper le vrai nom
+    final_url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$url" || echo "$url")"
 
-    final_name="$(printf '%s' "$header" \
-      | awk -F'filename\\*=|filename=' 'NF>1{print $2}' \
-      | head -n1 \
-      | sed -E "s/^UTF-8''//; s/;.*$//; s/\"//g" \
-      | sed -E 's/\r$//' )"
-
-    if [[ -n "$final_name" ]]; then
-      final_name="$(printf '%b' "${final_name//%/\\x}")"
-    fi
+    header="$(curl -sSIL "$url" | grep -i 'content-disposition' || true)"
+    final_name="$(echo "$header" | sed -nE 's/.*filename="?([^";]+).*/\1/p' | head -n1)"
 
     if [[ -z "$final_name" ]]; then
-      local last_loc
-      last_loc="$(printf '%s' "$header" | tail -n1 | tr -d '\r')"
-      if is_appimage_like_url "${last_loc:-}"; then
-        final_name="${last_loc##*/}"
-        final_name="${final_name%%\?*}"
-      fi
+      final_name="${final_url##*/}"
     fi
 
-    if [[ -z "$final_name" ]]; then
-      final_name="${url##*/}"
-      final_name="${final_name%%\?*}"
-    fi
+    final_name="${final_name%%\?*}"
+    [[ "$final_name" != *.AppImage ]] && final_name="${final_name}.AppImage"
 
-    if [[ -z "$final_name" || "$final_name" == "download" || "$final_name" == "latest" ]]; then
-      final_name="AppImage-$(date +%s).AppImage"
-    fi
-
-    printf '%s' "$final_name"
-  }
-
-  is_appimage_file() {
-    local file="$1"
-    if head -c 3 "$file" 2>/dev/null | grep -q '^AI'; then
-      return 0
-    else
-      return 1
-    fi
+    echo "$final_name"
   }
 
   download_appimage() {
@@ -339,137 +313,53 @@ if [[ -f "$APPIMG_LIST" ]]; then
     as_user "curl -fL --retry 3 --retry-delay 2 -C - -o '$target.part' '$url' || rm -f '$target.part'"
     as_user "test -s '$target.part' && mv -f '$target.part' '$target'"
 
+    # si c'est bien un AppImage mais sans extension
     if as_user "[ -f '$target' ] && ! [[ '$target' =~ \.AppImage$ ]]"; then
       if is_appimage_file "$target"; then
         new_target="${target}.AppImage"
         as_user "mv -f '$target' '$new_target'"
         target="$new_target"
-        echo "[INFO] To --> $target"
+        echo "[INFO] Renommé --> $target"
       fi
     fi
 
     as_user "chmod +x '$target'"
   }
 
-# -------- main loop --------
-while IFS= read -r entry; do
-  [[ -z "${entry// /}" || "$entry" =~ ^# ]] && continue
+  # -------- main loop (téléchargement) --------
+  while IFS= read -r entry; do
+    [[ -z "${entry// /}" || "$entry" =~ ^# ]] && continue
 
-  if is_github_repo_ref "$entry"; then
-    echo "[INFO] Resolving GitHub AppImage for: $entry"
-    url="$(resolve_github_appimage_url "$entry" || true)"
-    if [[ -z "$url" ]]; then
-      echo "[WARN] No AppImage found in release of $entry"
-      continue
+    if is_github_repo_ref "$entry"; then
+      echo "[INFO] Resolving GitHub AppImage for: $entry"
+      url="$(resolve_github_appimage_url "$entry" || true)"
+      if [[ -z "$url" ]]; then
+        echo "[WARN] No AppImage found in release of $entry"
+        continue
+      fi
+      fname="${url##*/}"
+      fname="${fname%%\?*}"
+      target="$APPDIR/$fname"
+      if [[ -f "$target" ]]; then
+        echo "[SKIP] Already present: $target"
+        continue
+      fi
+      download_appimage "$url" "$target"
+
+    else
+      url="$entry"
+      fname="$(guess_appimage_filename "$url")"
+      target="$APPDIR/$fname"
+      if [[ -f "$target" ]]; then
+        echo "[SKIP] Already present: $target"
+        continue
+      fi
+      download_appimage "$url" "$target"
     fi
-
-    fname="${url##*/}"
-    fname="${fname%%\?*}"
-    target="$APPDIR/$fname"
-
-    if [[ -f "$target" ]]; then
-      echo "[SKIP] Was present: $target"
-      continue
-    fi
-
-    download_appimage "$url" "$target"
-
-  else
-    url="$entry"
-    fname="$(guess_appimage_filename "$url")"
-    target="$APPDIR/$fname"
-
-    if [[ -f "$target" ]]; then
-      echo "[SKIP] Was present: $target"
-      continue
-    fi
-
-    download_appimage "$url" "$target"
-
-  fi
-done < <(apply_list "$APPIMG_LIST")
+  done < <(apply_list "$APPIMG_LIST")
 fi
 
-# ---- Gear Lever CLI helper (non interactif) --------------------------------
-as_root "dnf -y install fuse fuse-libs"
-# --- Helpers AppImage -------------------------------------------------------
-is_appimage_file() {
-  # vrai AppImage: commence par "AI"
-  head -c 2 "$1" 2>/dev/null | grep -q '^AI'
-}
-
-appimage_pretty_name() {
-  # Extrait le Name= depuis le .desktop interne (fallback: basename sans suffixes)
-  local f="$1"
-  local tmp
-  tmp="$(mktemp -d)"
-  # extraction non verbeuse; certains runtimes affichent sur stderr → 2>/dev/null
-  if "$f" --appimage-extract >/dev/null 2>&1; then
-    # l’extraction crée ./squashfs-root dans PWD
-    if [[ -d squashfs-root ]]; then
-      # on cherche le .desktop principal
-      local desk
-      desk="$(ls -1 squashfs-root/*.desktop squashfs-root/usr/share/applications/*.desktop 2>/dev/null | head -n1)"
-      if [[ -n "$desk" ]]; then
-        # Priorité à Name[en], sinon Name générique
-        local name
-        name="$(grep -E '^Name(\[en(_[A-Za-z]+)?\])?=' "$desk" | head -n1 | sed -E 's/^Name(\[.*\])?=//')"
-        name="${name:-$(grep -E '^Name=' "$desk" | head -n1 | sed -E 's/^Name=//')}"
-        if [[ -n "$name" ]]; then
-          # Nettoyage
-          name="$(echo "$name" | sed -E 's/[[:space:]]+/ /g; s/^[[:space:]]+|[[:space:]]+$//g; s/[^A-Za-z0-9._+ -]/-/g')"
-          echo "$name"
-          rm -rf squashfs-root
-          return 0
-        fi
-      fi
-      rm -rf squashfs-root
-    fi
-  fi
-  # Fallback: nom depuis le fichier
-  local base="${f##*/}"
-  base="${base%.AppImage}"
-  base="$(echo "$base" | sed -E 's/[-_.](x86_64|amd64|aarch64|arm64|armv7|armhf|linux|ubuntu|jammy|focal|latest)//Ig')"
-  base="$(echo "$base" | sed -E 's/[[:space:]]+/ /g; s/[^A-Za-z0-9._+ -]/-/g')"
-  echo "$base"
-}
-
-normalize_appimage_filename() {
-  # Renomme en "<Name>[-Version].AppImage" si possible, sinon juste "<Name>.AppImage"
-  local f="$1"
-  local dir base name ver new
-  dir="$(dirname "$f")"
-  base="$(basename "$f")"
-  name="$(appimage_pretty_name "$f")"
-
-  # Essaie d’extraire une version depuis le nom d’origine
-  ver="$(echo "$base" | sed -nE 's/.*[^0-9]([0-9]+\.[0-9]+(\.[0-9]+)?([._-]?(beta|rc)[0-9]*)?).*/\1/ip' | head -n1 | tr '[:upper:]' '[:lower:]' | tr '_' '-')"
-  # Construit un nom court et propre
-  if [[ -n "$ver" ]]; then
-    new="${name}-${ver}.AppImage"
-  else
-    new="${name}.AppImage"
-  fi
-  # compactage des espaces / tirets
-  new="$(echo "$new" | sed -E 's/[[:space:]]+/-/g; s/-+/-/g; s/^-+|-+$//g')"
-
-  # Si le nom ne change pas vraiment, ne rien faire
-  if [[ "$base" == "$new" ]]; then
-    echo "$f"
-    return 0
-  fi
-
-  local target="$dir/$new"
-  if mv -f -- "$f" "$target"; then
-    echo "$target"
-    return 0
-  else
-    echo "$f"
-    return 0
-  fi
-}
-
-# --- Gear Lever CLI ---------------------------------------------------------
+# -------- Intégration via Gear Lever --------
 GL_CMD=""
 if command -v gearlever >/dev/null 2>&1; then
   GL_CMD="gearlever"
@@ -477,7 +367,6 @@ else
   GL_CMD="flatpak run it.mijorus.gearlever"
 fi
 
-# option non-interactive si dispo
 GL_YES=""
 if $GL_CMD --help 2>/dev/null | grep -q -- '--assume-yes'; then
   GL_YES="--assume-yes"
@@ -485,69 +374,51 @@ fi
 
 integrate_and_update_appimages() {
   local appdir="${APPDIR:-$HOME/.AppImages}"
-  [[ -d "$appdir" ]] || { echo "[INFO] Rien à intégrer: $appdir inexistant"; return 0; }
+  [[ -d "$appdir" ]] || return 0
 
-  echo "[INFO] Intégration/MAJ via Gear Lever dans: $appdir"
+  echo "[INFO] Intégration/MAJ Gear Lever dans: $appdir"
 
-  # Liste actuelle pour éviter ré-intégrer
   local installed
   installed="$($GL_CMD --list-installed 2>/dev/null || true)"
 
-  # Ne prendre que des candidats AppImage: .AppImage OU exécutable (pour ceux sans extension)
   while IFS= read -r -d '' f; do
     [[ -f "$f" && -r "$f" ]] || continue
     case "$f" in
       *.desktop|*.zsync) continue ;;
     esac
 
-    # S’assurer que c’est exécutable
     [[ -x "$f" ]] || chmod +x "$f" 2>/dev/null || true
 
-    # Vérifier AppImage (signature) ou extension .AppImage
     if ! is_appimage_file "$f" && [[ ! "$f" =~ \.AppImage$ ]]; then
-      # 🔎 Diagnostic pour cas comme "beeper" si pas reconnu
-      echo "[SKIP] $(basename "$f") n'est pas détecté comme AppImage (signature 'AI' absente)."
+      echo "[SKIP] $(basename "$f") n'est pas détecté comme AppImage."
       continue
     fi
 
-    # ➜ Renommer proprement pour éviter les noms à rallonge
-    f="$(normalize_appimage_filename "$f")"
     local base="$(basename "$f")"
     echo "[INFO] Candidat: $base"
 
     if printf '%s\n' "$installed" | grep -Fq -- "$base"; then
-      echo "  └─ Déjà intégré → vérif des mises à jour…"
-      if $GL_CMD --update $GL_YES "$f" >/dev/null 2>&1; then
-        echo "     ✓ À jour (ou mis à jour)"
-      else
-        echo "     ⚠️  Update indisponible pour $base"
-      fi
+      echo "  └─ Déjà intégré → update…"
+      $GL_CMD --update $GL_YES "$f" >/dev/null 2>&1 || echo "     ⚠️ Pas d'update dispo"
     else
       echo "  └─ Intégration…"
       if $GL_CMD --integrate $GL_YES "$f" </dev/null 2>/dev/null; then
         echo "     ✓ Intégré"
         installed="$($GL_CMD --list-installed 2>/dev/null || printf '%s' "$installed")"
       else
-        # fallback si pas de --assume-yes
-        if command -v yes >/dev/null 2>&1 && yes | $GL_CMD --integrate "$f" >/dev/null 2>&1; then
-          echo "     ✓ Intégré (fallback yes)"
-          installed="$($GL_CMD --list-installed 2>/dev/null || printf '%s' "$installed")"
-        else
-          echo "     ❌ Échec d'intégration: $base"
+        if command -v yes >/dev/null 2>&1; then
+          yes | $GL_CMD --integrate "$f" >/dev/null 2>&1 && echo "     ✓ Intégré (fallback yes)" || echo "     ❌ Échec intégration"
         fi
       fi
-
-      # Tente une MAJ immédiate si source détectable
-      $GL_CMD --update $GL_YES "$f" >/dev/null 2>&1 || true
     fi
   done < <(find "$appdir" -maxdepth 1 -type f \( -iname '*.AppImage' -o -perm -u+x \) ! -iname '*.zsync' -print0)
 
-  echo "[INFO] Récap des mises à jour disponibles…"
+  echo "[INFO] Vérif des updates Gear Lever…"
   $GL_CMD --list-updates || true
 }
 
 integrate_and_update_appimages
 
-echo "[OK] External AppImages installed"
+echo "[OK] External AppImages installed & integrated"
 
 echo "[OK] Application installation step complete."
