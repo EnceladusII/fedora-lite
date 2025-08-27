@@ -71,16 +71,16 @@ if [[ "$SETUP" == "laptop" ]]; then
     sed -i \"/^max_parallel_downloads=/d;/^defaultyes=/d;/^keepcache=/d;/^fastestmirror=/d\" \"$TUX_REPO\"
     # append our tuned block
     cat >> \"$TUX_REPO\" <<EOF
-  [tuxedo]
-  name=tuxedo
-  baseurl=https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/x86_64/base
-  enabled=1
-  gpgcheck=1
-  gpgkey=https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/0x54840598.pub.asc
-  skip_if_unavailable=False
-  EOF
+[tuxedo]
+name=tuxedo
+baseurl=https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/x86_64/base
+enabled=1
+gpgcheck=1
+gpgkey=https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/0x54840598.pub.asc
+skip_if_unavailable=False
+EOF
     echo \"[OK] dnf.conf tuned (backup: $TUX_REPO.bak.$ts)\"
-  '"
+'"
 
   curl https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/0x54840598.pub.asc /tmp/0x54840598.pub.asc
   as_root "rpm --import /etc/0x54840598.pub.asc"
