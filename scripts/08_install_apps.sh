@@ -306,6 +306,28 @@ if [[ -f "$APPIMG_LIST" ]]; then
     echo "$final_name"
   }
 
+  shorten_appimage_filename() {
+    local f="$1"
+    local dir base name new
+    dir="$(dirname "$f")"
+    base="$(basename "$f")"
+
+    name="${base%.AppImage}"
+    # supprime version type -1.2.3 ou _1.2.3
+    name="$(echo "$name" | sed -E 's/[-_\.]?[0-9]+(\.[0-9]+)*([_-]?(beta|rc)[0-9]*)?$//I')"
+    # supprime suffixes arch/OS
+    name="$(echo "$name" | sed -E 's/[-_.]?(x86_64|amd64|aarch64|arm64|armv7|armhf|linux|ubuntu|jammy|focal|latest)$//I')"
+
+    new="${dir}/${name}.AppImage"
+
+    if [[ "$f" != "$new" ]]; then
+      mv -f -- "$f" "$new"
+      echo "$new"
+    else
+      echo "$f"
+    fi
+  }
+
   download_appimage() {
     local url="$1"
     local target="$2"
@@ -313,17 +335,19 @@ if [[ -f "$APPIMG_LIST" ]]; then
     as_user "curl -fL --retry 3 --retry-delay 2 -C - -o '$target.part' '$url' || rm -f '$target.part'"
     as_user "test -s '$target.part' && mv -f '$target.part' '$target'"
 
-    # si c'est bien un AppImage mais sans extension
     if as_user "[ -f '$target' ] && ! [[ '$target' =~ \.AppImage$ ]]"; then
       if is_appimage_file "$target"; then
         new_target="${target}.AppImage"
         as_user "mv -f '$target' '$new_target'"
         target="$new_target"
-        echo "[INFO] Renommé --> $target"
       fi
     fi
 
     as_user "chmod +x '$target'"
+
+    # Renommer en nom court (supprime version/suffixes)
+    target="$(shorten_appimage_filename "$target")"
+    echo "[INFO] Nom simplifié --> $(basename "$target")"
   }
 
   # -------- main loop (téléchargement) --------
