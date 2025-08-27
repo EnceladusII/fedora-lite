@@ -57,12 +57,14 @@ if [[ "$SETUP" == "laptop" ]]; then
   as_root "sudo tlp start"
 
   # Add profiles switch selector:
-  as_root "dnf -y update"
-  TUX_REPO="/etc/yum.repos.d/tuxedo.repo"
-  FEDORA_VERSION=$(rpm -E %fedora)
-  ts="$(date +%s)"
+  if [[ -f /sys/class/dmi/id/sys_vendor ]] && grep -qi "tuxedo" /sys/class/dmi/id/sys_vendor; then
+    echo "[OK] Tuxedo Computer found"
+    as_root "dnf -y update"
+    TUX_REPO="/etc/yum.repos.d/tuxedo.repo"
+    FEDORA_VERSION=$(rpm -E %fedora)
+    ts="$(date +%s)"
 
-  as_root "bash -lc '
+    as_root "bash -lc '
     set -euo pipefail
     [[ -f \"$TUX_REPO\" ]] || touch \"$TUX_REPO\"
     cp -a \"$TUX_REPO\" \"$TUX_REPO.bak.$ts\"
@@ -75,12 +77,13 @@ gpgcheck=1
 gpgkey=https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/0x54840598.pub.asc
 skip_if_unavailable=False
 EOF
-  echo \"[OK] dnf.conf tuned (backup: $TUX_REPO.bak.$ts)\"
-'"
+    echo \"[OK] dnf.conf tuned (backup: $TUX_REPO.bak.$ts)\"
+    '"
 
-  wget https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/0x54840598.pub.asc -O /tmp/0x54840598.pub.asc
-  as_root "rpm --import /tmp/0x54840598.pub.asc"
-  as_root "dnf -y install tuxedo-drivers tuxedo-control-center"
+    wget https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/0x54840598.pub.asc -O /tmp/0x54840598.pub.asc
+    as_root "rpm --import /tmp/0x54840598.pub.asc"
+    as_root "dnf -y install tuxedo-drivers tuxedo-control-center"
+  fi
 
   if [[ "$gpu" == "nvidia" ]]; then
       git clone https://github.com/wildtruc/nvidia-prime-select.git $UHOME/.local/share/nvidia-prime-select
