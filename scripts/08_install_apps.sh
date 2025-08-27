@@ -294,12 +294,10 @@ if [[ -f "$APPIMG_LIST" ]]; then
       | sed -E "s/^UTF-8''//; s/;.*$//; s/\"//g" \
       | sed -E 's/\r$//' )"
 
-    # Décoder %xx si présent (filename* encodé URL)
     if [[ -n "$final_name" ]]; then
       final_name="$(printf '%b' "${final_name//%/\\x}")"
     fi
 
-    # Fallback sur Location: si pas trouvé
     if [[ -z "$final_name" ]]; then
       local last_loc
       last_loc="$(printf '%s' "$header" | tail -n1 | tr -d '\r')"
@@ -309,18 +307,26 @@ if [[ -f "$APPIMG_LIST" ]]; then
       fi
     fi
 
-    # Fallback sur URL brute
     if [[ -z "$final_name" ]]; then
       final_name="${url##*/}"
       final_name="${final_name%%\?*}"
     fi
 
-    # Dernier fallback si on reste sur "download" ou vide
     if [[ -z "$final_name" || "$final_name" == "download" || "$final_name" == "latest" ]]; then
       final_name="AppImage-$(date +%s).AppImage"
     fi
 
     printf '%s' "$final_name"
+  }
+
+  is_appimage_file() {
+    local file="$1"
+    # Vérifie la magie AppImage dans les premiers octets
+    if head -c 3 "$file" 2>/dev/null | grep -q '^AI'; then
+      return 0
+    else
+      return 1
+    fi
   }
 
   download_appimage() {
@@ -329,6 +335,17 @@ if [[ -f "$APPIMG_LIST" ]]; then
     echo "[INFO] Downloading AppImage: $url"
     as_user "curl -fL --retry 3 --retry-delay 2 -C - -o '$target.part' '$url' || rm -f '$target.part'"
     as_user "test -s '$target.part' && mv -f '$target.part' '$target'"
+
+    # Vérifie si c'est bien un AppImage même si l'extension n'est pas présente
+    if as_user "[ -f '$target' ] && ! [[ '$target' =~ \.AppImage$ ]]"; then
+      if is_appimage_file "$target"; then
+        new_target="${target}.AppImage"
+        as_user "mv -f '$target' '$new_target'"
+        target="$new_target"
+        echo "[INFO] Renommé en $target"
+      fi
+    fi
+
     as_user "chmod +x '$target'"
   }
 
