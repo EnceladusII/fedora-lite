@@ -278,7 +278,7 @@ if [[ -f "$APPIMG_LIST" ]]; then
     local url="$1"
     local target="$2"
     echo "[INFO] Downloading AppImage: $url"
-    as_user "curl -fL -o '$target' '$url'"
+    as_user "wget -O '$target' '$url'"
     as_user "chmod +x '$target'"
   }
 
