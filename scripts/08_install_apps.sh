@@ -79,7 +79,7 @@ EOF
 '"
 
   wget https://rpm.tuxedocomputers.com/fedora/$FEDORA_VERSION/0x54840598.pub.asc /tmp/0x54840598.pub.asc
-  as_root "rpm --import /etc/0x54840598.pub.asc"
+  as_root "rpm --import /tmp/0x54840598.pub.asc"
   as_root "dnf -y install tuxedo-drivers tuxedo-control-center"
 
   if [[ "$gpu" == "nvidia" ]]; then
