@@ -390,6 +390,72 @@ while IFS= read -r entry; do
 done < <(apply_list "$APPIMG_LIST")
 fi
 
+# ---- Gear Lever CLI helper -----------------------------------------------
+# Utilise l'alias si présent, sinon passe par flatpak run.
+GL_CMD=""
+if command -v gearlever >/dev/null 2>&1; then
+  GL_CMD="gearlever"
+else
+  GL_CMD="flatpak run it.mijorus.gearlever"
+fi
+
+# Sanity check
+if ! $GL_CMD --help >/dev/null 2>&1; then
+  echo "[ERROR] Gear Lever introuvable. Installe via: flatpak install flathub it.mijorus.gearlever"
+  exit 1
+fi
+
+# ---- Intégration & mises à jour de toutes les AppImages du dossier --------
+integrate_and_update_appimages() {
+  local appdir="${APPDIR:-$HOME/.AppImages}"
+  [[ -d "$appdir" ]] || { echo "[INFO] Rien à faire, dossier inexistant: $appdir"; return 0; }
+
+  echo "[INFO] Scan du dossier: $appdir"
+
+  # Liste des installés actuelle (on la met en cache pour accélérer les checks)
+  # Le CLI n'a pas (encore) de sortie JSON, on fait un match tolérant sur le nom de fichier.
+  local installed
+  installed="$($GL_CMD --list-installed 2>/dev/null || true)"
+
+  # Parcours des fichiers exécutables (ignore .zsync et autres)
+  # NB: certains AppImages n'ont pas l'extension .AppImage, on ne filtre pas par extension.
+  while IFS= read -r -d '' f; do
+    # On ne traite que les fichiers réguliers lisibles
+    [[ -f "$f" && -r "$f" ]] || continue
+    local base="$(basename "$f")"
+
+    echo "[INFO] Détection: $base"
+
+    # Est-ce déjà intégré ? On cherche une occurrence du nom de fichier dans la liste
+    if printf '%s\n' "$installed" | grep -Fq -- "$base"; then
+      echo "  └─ Déjà intégré → vérif des mises à jour…"
+      if $GL_CMD --update "$f"; then
+        echo "     ✓ À jour (ou mis à jour avec succès)"
+      else
+        echo "     ⚠️  Échec update (peut-être pas de source d’update connue)"
+      fi
+    else
+      echo "  └─ Pas intégré → intégration…"
+      if $GL_CMD --integrate "$f"; then
+        echo "     ✓ Intégré au menu"
+        # Après intégration, on tente une mise à jour immédiate (utile si un update URL est devinable)
+        $GL_CMD --update "$f" >/dev/null 2>&1 || true
+        # Rafraîchir le cache 'installed' pour les prochaines itérations
+        installed="$($GL_CMD --list-installed 2>/dev/null || printf '%s' "$installed")"
+      else
+        echo "     ❌ Échec d'intégration (fichier: $f)"
+      fi
+    fi
+  done < <(find "$appdir" -maxdepth 1 -type f ! -name '*.zsync' -print0)
+
+  # Optionnel: afficher un récap des updates restantes détectées par Gear Lever
+  echo "[INFO] Recherche des mises à jour disponibles (récap)…"
+  $GL_CMD --list-updates || true
+}
+
+# Appel
+integrate_and_update_appimages
+
 echo "[OK] External AppImages installed"
 
 echo "[OK] Application installation step complete."
