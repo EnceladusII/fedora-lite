@@ -314,7 +314,7 @@ if [[ -f "$APPIMG_LIST" ]]; then
 
     name="${base%.AppImage}"
     # supprime version type -1.2.3 ou _1.2.3
-    name="$(echo "$name" | sed -E 's/[-_\.]?[0-9]+(\.[0-9]+)*([_-]?(beta|rc)[0-9]*)?$//I')"
+    name="$(echo "$name" | sed -E 's/[-_\.]?[0-9]+(\.[0-9]+)*([._-]?(beta|rc)[0-9]*)?$//I')"
     # supprime suffixes arch/OS
     name="$(echo "$name" | sed -E 's/[-_.]?(x86_64|amd64|aarch64|arm64|armv7|armhf|linux|ubuntu|jammy|focal|latest)$//I')"
 
@@ -396,6 +396,20 @@ if $GL_CMD --help 2>/dev/null | grep -q -- '--assume-yes'; then
   GL_YES="--assume-yes"
 fi
 
+fix_desktop_entry_name() {
+  local appfile="$1"
+  local appname="$(basename "$appfile" .AppImage)"
+  local desktop_dir="$HOME/.local/share/applications"
+
+  local desktop_file
+  desktop_file="$(grep -l "Exec=.*${appfile}" "$desktop_dir"/gearlever-*.desktop 2>/dev/null | head -n1)"
+
+  if [[ -n "$desktop_file" && -w "$desktop_file" ]]; then
+    sed -i "s/^Name=.*/Name=$appname/" "$desktop_file"
+    echo "[INFO] .desktop corrigé → $desktop_file (Name=$appname)"
+  fi
+}
+
 integrate_and_update_appimages() {
   local appdir="${APPDIR:-$HOME/.AppImages}"
   [[ -d "$appdir" ]] || return 0
@@ -428,10 +442,11 @@ integrate_and_update_appimages() {
       echo "  └─ Intégration…"
       if $GL_CMD --integrate $GL_YES "$f" </dev/null 2>/dev/null; then
         echo "     ✓ Intégré"
+        fix_desktop_entry_name "$f"
         installed="$($GL_CMD --list-installed 2>/dev/null || printf '%s' "$installed")"
       else
         if command -v yes >/dev/null 2>&1; then
-          yes | $GL_CMD --integrate "$f" >/dev/null 2>&1 && echo "     ✓ Intégré (fallback yes)" || echo "     ❌ Échec intégration"
+          yes | $GL_CMD --integrate "$f" >/dev/null 2>&1 && echo "     ✓ Intégré (fallback yes)" && fix_desktop_entry_name "$f" || echo "     ❌ Échec intégration"
         fi
       fi
     fi
