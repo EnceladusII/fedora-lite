@@ -66,10 +66,6 @@ if [[ "$SETUP" == "laptop" ]]; then
     set -euo pipefail
     [[ -f \"$TUX_REPO\" ]] || touch \"$TUX_REPO\"
     cp -a \"$TUX_REPO\" \"$TUX_REPO.bak.$ts\"
-    # grep -q \"^\[main\]\" \"$TUX_REPO\" || echo \"[main]\" >> \"$TUX_REPO\"
-    # remove previous occurrences to avoid duplicates
-    sed -i \"/^max_parallel_downloads=/d;/^defaultyes=/d;/^keepcache=/d;/^fastestmirror=/d\" \"$TUX_REPO\"
-    # append our tuned block
     cat >> \"$TUX_REPO\" <<EOF
 [tuxedo]
 name=tuxedo
