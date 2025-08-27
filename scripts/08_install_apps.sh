@@ -380,6 +380,7 @@ while IFS= read -r entry; do
     fi
 
     download_appimage "$url" "$target"
+
   fi
 done < <(apply_list "$APPIMG_LIST")
 fi
