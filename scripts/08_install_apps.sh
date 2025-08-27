@@ -199,11 +199,11 @@ install_latest_github_rpm() {
   as_root "dnf -y install '$rpm_file'"
 }
 
-if [[ -f "$RPM_GH_LIST" ]]; then
+if [[ -f "$RPM_LIST" ]]; then
   while IFS= read -r repo; do
     [[ -z "${repo// /}" || "$repo" =~ ^# ]] && continue
     install_latest_github_rpm "$repo"
-  done < <(apply_list "$RPM_GH_LIST")
+  done < <(apply_list "$RPM_LIST")
 fi
 
 echo "[OK] External RPMs installed"
