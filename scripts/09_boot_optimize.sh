@@ -22,6 +22,18 @@ warn() { printf '[WARN] %s\n' "$*" >&2; }
 on_err(){ echo "[ERR] command failed (line $LINENO): $BASH_COMMAND" >&2; }
 trap on_err ERR
 
+# <<< FIX: init + trap safe >>>
+SUDO_KEEPALIVE_PID=""  # évite 'unbound variable' si non défini
+cleanup() {
+  # kill uniquement si défini et non vide
+  if [[ -n "${SUDO_KEEPALIVE_PID:-}" ]]; then
+    kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+# >>> FIX
+
+# Exécution root via helpers (respecte DRY_RUN)
 do_root() {
   if [[ "$DRY_RUN" == "1" ]]; then
     log "[DRY] $*"
@@ -30,15 +42,15 @@ do_root() {
   fi
 }
 
+# Sudo warm-up (sauf DRY)
 if [[ "$DRY_RUN" != "1" ]]; then
   sudo -v || { echo "[ERR] Need sudo (user in wheel). Run 'sudo -v' first."; exit 1; }
   ( while true; do sleep 60; sudo -n true 2>/dev/null || exit; done ) &
   SUDO_KEEPALIVE_PID=$!
-  trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true' EXIT
 fi
 
 log "[INFO] DRY_RUN=$DRY_RUN REMOVE_PLYMOUTH=$REMOVE_PLYMOUTH DRACUT_HOSTONLY=$DRACUT_HOSTONLY"
-log "[INFO] KARGS: drop_rhgb=$KARGS_DROP_RHGB drop_quiet=$KARGS_DROP_QUIET add_nowatchdog=$KARGS_ADD_NOWATCHDOG"
+log "[INFO] KARGS: drop_rhgb=$KARGS_DROP_RHGB drop_quiet=$KARGS_DROP_QUIET add_nowATCHDOG=$KARGS_ADD_NOWATCHDOG"
 
 # 1) Désactivation services (liste utilisateur)
 disable_one() {
@@ -67,8 +79,7 @@ do_root "systemctl disable --now NetworkManager-wait-online.service 2>/dev/null 
 do_root "systemctl mask systemd-networkd-wait-online.service 2>/dev/null || true"
 do_root "systemctl mask plymouth-quit-wait.service 2>/dev/null || true"
 
-# 3) GRUB : timeout + menu caché (avec backup) — chemin en dur pour éviter l'unbound
-GRUB_DEFAULT="/etc/default/grub"
+# 3) GRUB : timeout + menu caché (avec backup)
 ts="$(date +%s)"
 do_root "cp -a '/etc/default/grub' '/etc/default/grub.bak.${ts}' 2>/dev/null || true"
 do_root "bash -lc '
