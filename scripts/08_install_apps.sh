@@ -238,34 +238,15 @@ EOF
   # Backup before modifications
   cp -a \"$GL_CONF_FILE\" \"$GL_CONF_FILE.bak.$ts\"
 
-  # Ensure the section header exists (in case the file was created differently)
-  grep -q \"^\[it\/mijorus\/gearlever\]\" \"$GL_CONF_FILE\" || printf \"\n[it/mijorus/gearlever]\n\" >> \"$GL_CONF_FILE\"
+  # Ensure the section header exists
+  grep -q \"^\[it\/mijorus\/gearlever\]$\" \"$GL_CONF_FILE\" || printf \"\n[it/mijorus/gearlever]\n\" >> \"$GL_CONF_FILE\"
 
-  # Remove previous occurrences of our keys only inside the target section
-  awk -v OFS=\"\" '
-    BEGIN{insec=0}
-    /^\[/{insec=0}
-    /^\[it\/mijorus\/gearlever\]/{insec=1; print; next}
-    {
-      if(insec && (\$0 ~ /^is-maximized=/ || \$0 ~ /^appimages-default-folder=/)) next
-      print
-    }
-  ' \"$GL_CONF_FILE\" > \"$GL_CONF_FILE.tmp\"
-  mv -f \"$GL_CONF_FILE.tmp\" \"$GL_CONF_FILE\"
+  # Remove previous keys ONLY within the target section
+  sed -i -E \"/^\\[it\\/mijorus\\/gearlever\\]\$/,/^\\[/{/^(is-maximized|appimages-default-folder)=/d}\" \"$GL_CONF_FILE\"
 
-  # Insert our keys right after the section header
-  awk -v appdir=\"'"$APPDIR"'\" '
-    BEGIN{printed=0}
-    {
-      print \$0
-      if(!printed && \$0 ~ /^\\[it\\/mijorus\\/gearlever\\]\$/){
-        print \"is-maximized=true\"
-        print \"appimages-default-folder=\" appdir
-        printed=1
-      }
-    }
-  ' \"$GL_CONF_FILE\" > \"$GL_CONF_FILE.new\"
-  mv -f \"$GL_CONF_FILE.new\" \"$GL_CONF_FILE\"
+  # Add our keys right after the section header
+  sed -i \"/^\\[it\\/mijorus\\/gearlever\\]\$/a is-maximized=true\\
+appimages-default-folder='"$APPDIR"'\" \"$GL_CONF_FILE\"
 
   echo \"[OK] GL keyfile prepared (backup: $GL_CONF_FILE.bak.$ts)\"
 '"
