@@ -218,21 +218,56 @@ echo "[OK] External RPMs installed"
 APPIMG_LIST="$ROOT_DIR/lists/appimages.txt"
 APPDIR="$(user_home "$TARGET_USER")/.local/share/AppImages"
 GL_CONF_FILE="$(user_home "$TARGET_USER")/.var/app/it.mijorus.gearlever/config/glib-2.0/settings/keyfile"
+GL_CONF_DIR="$(dirname "$GL_CONF_FILE")"
 ts="$(date +%s)"
 
 as_root "bash -lc '
   set -euo pipefail
-  [[ -f \"$GL_CONF_FILE\" ]] || touch \"$GL_CONF_FILE\"
-  cp -a \"$GL_CONF_FILE\" \"$GL_CONF_FILE.bak.$ts\"
-  grep -q \"^\[it\/mijorus\/gearlever\]\" \"$GL_CONF_FILE\" || echo \"[it/mijorus/gearlever]\" >> \"$GL_CONF_FILE\"
-  # remove previous occurrences to avoid duplicates
-  sed -i \"/^is-maximized=/d;/^appimages-default-folder=/d\" \"$GL_CONF_FILE\"
-  # append our tuned block
-  cat >> \"$GL_CONF_FILE\" <<EOF
-is-maximized=true
-appimages-default-folder='$APPDIR'
+
+  # Ensure the config directory exists inside the Flatpak sandbox
+  install -d -m 700 \"$GL_CONF_DIR\"
+
+  # Initialize the keyfile with the expected section if it does not exist
+  if [[ ! -f \"$GL_CONF_FILE\" ]]; then
+    cat > \"$GL_CONF_FILE\" <<EOF
+[it/mijorus/gearlever]
+# auto-created on $(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
-  echo \"[OK] GL keyfile tuned (backup: $GL_CONF_FILE.bak.$ts)\"
+  fi
+
+  # Backup before modifications
+  cp -a \"$GL_CONF_FILE\" \"$GL_CONF_FILE.bak.$ts\"
+
+  # Ensure the section header exists (in case the file was created differently)
+  grep -q \"^\[it\/mijorus\/gearlever\]\" \"$GL_CONF_FILE\" || printf \"\n[it/mijorus/gearlever]\n\" >> \"$GL_CONF_FILE\"
+
+  # Remove previous occurrences of our keys only inside the target section
+  awk -v OFS=\"\" '
+    BEGIN{insec=0}
+    /^\[/{insec=0}
+    /^\[it\/mijorus\/gearlever\]/{insec=1; print; next}
+    {
+      if(insec && (\$0 ~ /^is-maximized=/ || \$0 ~ /^appimages-default-folder=/)) next
+      print
+    }
+  ' \"$GL_CONF_FILE\" > \"$GL_CONF_FILE.tmp\"
+  mv -f \"$GL_CONF_FILE.tmp\" \"$GL_CONF_FILE\"
+
+  # Insert our keys right after the section header
+  awk -v appdir=\"'"$APPDIR"'\" '
+    BEGIN{printed=0}
+    {
+      print \$0
+      if(!printed && \$0 ~ /^\\[it\\/mijorus\\/gearlever\\]\$/){
+        print \"is-maximized=true\"
+        print \"appimages-default-folder=\" appdir
+        printed=1
+      }
+    }
+  ' \"$GL_CONF_FILE\" > \"$GL_CONF_FILE.new\"
+  mv -f \"$GL_CONF_FILE.new\" \"$GL_CONF_FILE\"
+
+  echo \"[OK] GL keyfile prepared (backup: $GL_CONF_FILE.bak.$ts)\"
 '"
 
 if [[ -f "$APPIMG_LIST" ]]; then
