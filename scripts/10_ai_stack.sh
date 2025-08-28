@@ -25,8 +25,8 @@ ensure_pkg() {
 }
 
 ensure_rpmfusion() {
-  as_root "bash -lc '
-    set -euo pipefail
+  as_root "sh -lc '
+    set -eu
     if ! dnf repolist | grep -qi rpmfusion; then
       ver=\$(rpm -E %fedora)
       dnf -y install \
@@ -64,8 +64,8 @@ ensure_pkg OpenCL-ICD-Loader OpenCL-ICD-Loader-devel clinfo opencl-headers
 # ---- CUDA toolkit ----
 install_cuda_official() {
   echo "[INFO] CUDA toolkit (repo NVIDIA officiel)"
-  as_root "bash -lc '
-    set -euo pipefail
+  as_root "sh -lc '
+    set -eu
     ver=\$(rpm -E %fedora)
     repo_url=\"https://developer.download.nvidia.com/compute/cuda/repos/fedora\${ver}/x86_64/cuda-fedora\${ver}.repo\"
     if curl -fsSL \"\$repo_url\" >/dev/null; then
@@ -123,7 +123,7 @@ fi
 
 # ---- /etc/profile.d exports ----
 echo "[INFO] /etc/profile.d/ai-env.sh"
-as_root "bash -lc '
+as_root "sh -lc '
 cat >/etc/profile.d/ai-env.sh <<EOF
 # AI toolchain env (generated; drivers non requis)
 [ -d /usr/local/cuda ] && export CUDA_PATH=/usr/local/cuda && export PATH=\$CUDA_PATH/bin:\$PATH && export LD_LIBRARY_PATH=\${LD_LIBRARY_PATH:+\$LD_LIBRARY_PATH:}\$CUDA_PATH/lib64
@@ -134,14 +134,15 @@ chmod 0644 /etc/profile.d/ai-env.sh
 
 # ---- Sanity checks ----
 echo "[INFO] clinfo (top 30 lignes):"
-as_root "command -v clinfo >/dev/null 2>&1 && clinfo | head -n 30 || echo '[INFO] clinfo indisponible'"
+as_root "sh -lc 'command -v clinfo >/dev/null 2>&1 && clinfo | head -n 30 || echo \"[INFO] clinfo indisponible\"'"
 
 echo "[INFO] ICD OpenCL présents:"
-as_root "bash -lc '
-  shopt -s nullglob
-  files=(/etc/OpenCL/vendors/*.icd)
-  if (( \${#files[@]} > 0 )); then
-    printf \"%s\n\" \"\${files[@]}\"
+# POSIX-safe: pas d'array, pas de shopt
+as_root "sh -lc '
+  set -- /etc/OpenCL/vendors/*.icd
+  if [ -e \"\$1\" ]; then
+    # au moins un fichier correspond
+    for f in \"\$@\"; do printf \"%s\n\" \"\$f\"; done
   else
     echo \"(aucun)\"
   fi
@@ -150,7 +151,7 @@ as_root "bash -lc '
 # ---- Post-validation: clinfo doit voir des plateformes ----
 platforms=0
 if command -v clinfo >/dev/null 2>&1; then
-  platforms="$(clinfo 2>/dev/null | awk -F: \"/Number of platforms/ {gsub(/ /,\\\"\\\", \$2); print \$2; exit}\" || echo 0)"
+  platforms="$(clinfo 2>/dev/null | awk -F: '/Number of platforms/ {gsub(/ /,"",$2); print $2; exit}' || echo 0)"
 fi
 
 if [[ "$platforms" -eq 0 ]]; then
