@@ -81,22 +81,21 @@ do_root "systemctl mask plymouth-quit-wait.service 2>/dev/null || true"
 
 # 3) GRUB : timeout + menu caché (avec backup)
 ts="$(date +%s)"
-do_root "cp -a '/etc/default/grub' '/etc/default/grub.bak.${ts}' 2>/dev/null || true"
-do_root "bash -lc '
-  set -euo pipefail
-  f=/etc/default/grub
-  touch \"$f\"
-  if grep -q \"^GRUB_TIMEOUT=\" \"$f\"; then
-    sed -i \"s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=1/\" \"$f\"
-  else
-    echo GRUB_TIMEOUT=1 >> \"$f\"
-  fi
-  if grep -q \"^GRUB_TIMEOUT_STYLE=\" \"$f\"; then
-    sed -i \"s/^GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=hidden/\" \"$f\"
-  else
-    echo GRUB_TIMEOUT_STYLE=hidden >> \"$f\"
-  fi
-'"
+do_root "cp -a /etc/default/grub /etc/default/grub.bak.${ts} 2>/dev/null || true"
+
+# Assure l'existence du fichier
+do_root "touch /etc/default/grub"
+
+# Force GRUB_TIMEOUT=1 (modifie si présent, sinon ajoute)
+do_root "grep -q '^GRUB_TIMEOUT=' /etc/default/grub \
+  && sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=1/' /etc/default/grub \
+  || echo GRUB_TIMEOUT=1 >> /etc/default/grub"
+
+# Force GRUB_TIMEOUT_STYLE=hidden (modifie si présent, sinon ajoute)
+do_root "grep -q '^GRUB_TIMEOUT_STYLE=' /etc/default/grub \
+  && sed -i 's/^GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=hidden/' /etc/default/grub \
+  || echo GRUB_TIMEOUT_STYLE=hidden >> /etc/default/grub"
+
 
 # 4) Kargs via grubby
 if command -v grubby >/dev/null 2>&1; then
