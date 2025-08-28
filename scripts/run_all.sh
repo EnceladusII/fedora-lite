@@ -35,13 +35,18 @@ STEPS=(
 
 for s in "${STEPS[@]}"; do
   script="$DIR/$s.sh"
-  if [[ -x "$script" ]]; then
-    banner "$s"
-    bash "$script"
-    confirm
-  else
-    echo "[WARN] Missing or non-executable: $script — skipping."
+  if [[ ! -e "$script" ]]; then
+    echo "[WARN] Missing: $script — skipping."
+    continue
   fi
+  if [[ ! -x "$script" ]]; then
+    echo "[WARN] Not executable: $script — try: chmod +x \"$script\". Skipping."
+    continue
+  fi
+
+  banner "$s"
+  bash "$script"
+  confirm
 done
 
 banner "All steps completed!"
