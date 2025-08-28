@@ -157,4 +157,58 @@ if [[ "$gpu" == "amd" && "${INSTALL_ROCM:-1}" == "1" ]]; then
   as_root "command -v hipcc >/dev/null 2>&1 && hipcc --version || true"
 fi
 
+# ---- Validation finale: ICD + plateformes OpenCL ----
+post_validate() {
+  # Compter les ICD installés
+  local icd_count
+  icd_count="$(bash -lc 'shopt -s nullglob; files=(/etc/OpenCL/vendors/*.icd); echo ${#files[@]-0}')"
+
+  # Lire le nombre de plateformes vues par clinfo (si présent)
+  local platforms=0
+  if command -v clinfo >/dev/null 2>&1; then
+    platforms="$(clinfo 2>/dev/null | awk -F: "/Number of platforms/ {gsub(/ /,\"\",$2); print \$2; exit}" || echo 0)"
+  fi
+
+  if [[ "${icd_count}" -eq 0 || "${platforms}" -eq 0 ]]; then
+    echo "[WARN] OpenCL installé mais aucune plateforme disponible (ICD=${icd_count}, platforms=${platforms})."
+    case "$gpu" in
+      amd)
+        cat <<'EOT'
+  -> Pour AMD:
+     - Installe les ICD ROCm:  rocm-opencl rocm-opencl-runtime
+       (dans ce script: export INSTALL_ROCM=1 ; ROCM_REPO=amd|copr)
+     - Assure-toi que le pilote AMDGPU/ROCr est chargé (géré par ton script drivers).
+EOT
+        ;;
+      nvidia)
+        cat <<'EOT'
+  -> Pour NVIDIA:
+     - Le pilote propriétaire installe l'ICD OpenCL (nvidia.icd).
+     - Sur Fedora (RPM Fusion): xorg-x11-drv-nvidia-cuda fournit les libs CUDA/OpenCL.
+     - Après installation du driver, rouvre la session et relance: clinfo
+EOT
+        ;;
+      intel)
+        cat <<'EOT'
+  -> Pour Intel:
+     - Installe intel-compute-runtime (ce script le fait quand GPU=intel).
+     - Option Mesa Rusticl (OpenCL via Mesa): dnf install mesa-libOpenCL
+       puis tester avec: RUSTICL_ENABLE=iris clinfo
+EOT
+        ;;
+      *)
+        cat <<'EOT'
+  -> Aucun GPU détecté: il est normal de n'avoir aucune plateforme OpenCL.
+     Installe un runtime vendor si tu en ajoutes un plus tard.
+EOT
+        ;;
+    esac
+    echo "[HINT] Re-teste:  clinfo | sed -n '1,40p'  &&  ls -1 /etc/OpenCL/vendors/*.icd 2>/dev/null || true"
+  else
+    echo "[OK] OpenCL plateformes détectées: ${platforms} (ICD=${icd_count})"
+  fi
+}
+
+post_validate
+
 echo "[OK] AI userland installé (best-effort). Drivers gérés par ton autre script."
