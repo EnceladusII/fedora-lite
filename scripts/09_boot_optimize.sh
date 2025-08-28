@@ -3,32 +3,32 @@ set -euo pipefail
 shopt -s lastpipe
 
 # -------------------------------------------------------------
-# Boot optimizations for Fedora (GRUB+BLS), safe & idempotent
-# - désactive/masque des services connus pour ralentir le boot
-# - réduit le timeout GRUB et cache le menu
-# - retire 'rhgb' (et optionnellement 'quiet') via grubby
-# - (optionnel) rend l'initramfs hostonly et/ou retire Plymouth
+# Fedora boot optimization (GRUB+BLS), idempotent
+# - Désactive/masque des services lents
+# - Réduit le timeout GRUB et cache le menu
+# - Retire 'rhgb' (et optionnellement 'quiet') via grubby
+# - (optionnel) initramfs hostonly et/ou retrait de Plymouth
 # -------------------------------------------------------------
 
-# Charge les helpers (NE PAS MODIFIER helpers)
+# Charge tes helpers (NE PAS MODIFIER helpers)
 . "$(dirname "$0")/00_helpers.sh"
 
-# --- Options (surchargées via env) --------------------------
-: "${DRY_RUN:=0}"               # 1 = prévisualisation (aucun changement)
-: "${REMOVE_PLYMOUTH:=${REMOVE_PLYMOUTH:-0}}"  # vient potentiellement du .env
-: "${DRACUT_HOSTONLY:=0}"       # 1 = initramfs "hostonly"
-: "${KARGS_DROP_RHGB:=1}"       # 1 = retire 'rhgb' (splash)
-: "${KARGS_DROP_QUIET:=0}"      # 1 = retire 'quiet' (affiche logs)
-: "${KARGS_ADD_NOWATCHDOG:=0}"  # 1 = ajoute 'nowatchdog'
-# ------------------------------------------------------------
+# --- Options (surchargées via env/.env) ----------------------
+: "${DRY_RUN:=0}"                  # 1 = prévisualisation
+: "${REMOVE_PLYMOUTH:=${REMOVE_PLYMOUTH:-0}}"
+: "${DRACUT_HOSTONLY:=0}"
+: "${KARGS_DROP_RHGB:=1}"
+: "${KARGS_DROP_QUIET:=0}"
+: "${KARGS_ADD_NOWATCHDOG:=0}"
+# -------------------------------------------------------------
 
 SERVICES_LIST="${ROOT_DIR}/lists/services-disable.txt"
 
 log()  { printf '%s\n' "$*"; }
 warn() { printf '[WARN] %s\n' "$*" >&2; }
 
-run() {
-  # Utilise as_root() des helpers ; respecte DRY_RUN
+do_root() {
+  # Exécute via as_root, mais respecte DRY_RUN
   if [[ "$DRY_RUN" == "1" ]]; then
     log "[DRY] $*"
   else
@@ -36,15 +36,21 @@ run() {
   fi
 }
 
-# 0) Résumé des options
+# (Facultatif) échauffe sudo pour éviter un prompt sous make
+if [[ "${DRY_RUN:-0}" != "1" ]]; then
+  sudo -v || { echo "[ERR] This step needs sudo (user in wheel)."; exit 1; }
+fi
+
+# 0) Résumé
 log "[INFO] DRY_RUN=$DRY_RUN REMOVE_PLYMOUTH=$REMOVE_PLYMOUTH DRACUT_HOSTONLY=$DRACUT_HOSTONLY"
 log "[INFO] KARGS: drop_rhgb=$KARGS_DROP_RHGB drop_quiet=$KARGS_DROP_QUIET add_nowatchdog=$KARGS_ADD_NOWATCHDOG"
 
-# 1) Désactiver / masquer des services (liste utilisateur)
+# 1) Désactivation services (liste utilisateur)
 disable_one() {
   local unit="$1"
   [[ -z "${unit// /}" || "$unit" =~ ^# ]] && return 0
   log "[INFO] Disabling service: $unit"
+  # ta helper disable_service utilise déjà as_root
   disable_service "$unit" || true
 }
 
@@ -56,56 +62,56 @@ else
   log "[INFO] No services list found at $SERVICES_LIST"
 fi
 
-# Gains “communs” sûrs (ignore si l’unité n’existe pas)
+# Gains communs sûrs
 disable_service "kdump.service" || true
-run "systemctl mask systemd-boot-system-token.service || true"
-run "systemctl disable --now NetworkManager-wait-online.service 2>/dev/null || true"
-run "systemctl mask systemd-networkd-wait-online.service 2>/dev/null || true"
-run "systemctl mask plymouth-quit-wait.service 2>/dev/null || true"
+do_root "systemctl mask systemd-boot-system-token.service || true"
+do_root "systemctl disable --now NetworkManager-wait-online.service 2>/dev/null || true"
+do_root "systemctl mask systemd-networkd-wait-online.service 2>/dev/null || true"
+do_root "systemctl mask plymouth-quit-wait.service 2>/dev/null || true"
 
-# 2) GRUB : timeout minimal + menu caché (sauvegarde avant modif)
+# 2) GRUB : timeout + menu caché (avec backup)
 GRUB_DEFAULT="/etc/default/grub"
 ts="$(date +%s)"
-run "cp -a '$GRUB_DEFAULT' '${GRUB_DEFAULT}.bak.${ts}' || true"
+do_root "cp -a '$GRUB_DEFAULT' '${GRUB_DEFAULT}.bak.${ts}' || true"
 
-run "bash -lc '
+do_root "bash -lc '
   set -euo pipefail
   f=\"$GRUB_DEFAULT\"
   touch \"$f\"
-  grep -q \"^GRUB_TIMEOUT=\" \"$f\" && sed -i \"s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=1/\" \"$f\" || echo GRUB_TIMEOUT=1 >> \"$f\"
-  grep -q \"^GRUB_TIMEOUT_STYLE=\" \"$f\" && sed -i \"s/^GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=hidden/\" \"$f\" || echo GRUB_TIMEOUT_STYLE=hidden >> \"$f\"
+  if grep -q \"^GRUB_TIMEOUT=\" \"$f\"; then sed -i \"s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=1/\" \"$f\"; else echo GRUB_TIMEOUT=1 >> \"$f\"; fi
+  if grep -q \"^GRUB_TIMEOUT_STYLE=\" \"$f\"; then sed -i \"s/^GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=hidden/\" \"$f\"; else echo GRUB_TIMEOUT_STYLE=hidden >> \"$f\"; fi
 '"
 
 # 3) Kargs via grubby (BLS)
 if command -v grubby >/dev/null 2>&1; then
-  [[ "$KARGS_DROP_RHGB" == "1" ]] && run "grubby --update-kernel=ALL --remove-args='rhgb' || true"
-  [[ "$KARGS_DROP_QUIET" == "1" ]] && run "grubby --update-kernel=ALL --remove-args='quiet' || true"
-  [[ "$KARGS_ADD_NOWATCHDOG" == "1" ]] && run "grubby --update-kernel=ALL --args='nowatchdog' || true"
+  [[ "$KARGS_DROP_RHGB" == "1"      ]] && do_root "grubby --update-kernel=ALL --remove-args='rhgb' || true"
+  [[ "$KARGS_DROP_QUIET" == "1"     ]] && do_root "grubby --update-kernel=ALL --remove-args='quiet' || true"
+  [[ "$KARGS_ADD_NOWATCHDOG" == "1" ]] && do_root "grubby --update-kernel=ALL --args='nowatchdog' || true"
 else
   warn "grubby introuvable, saut des ajustements kargs (BLS)."
 fi
 
-# 4) Option : retirer Plymouth et reconstruire l'initramfs
+# 4) Option : retirer Plymouth puis reconstruire initramfs
 if [[ "${REMOVE_PLYMOUTH}" == "1" ]]; then
   log "[INFO] Removing Plymouth and rebuilding initramfs"
-  run "dnf -y remove 'plymouth*' || true"
-  run "dracut --force"
+  do_root "dnf -y remove 'plymouth*' || true"
+  do_root "dracut -f -v || { echo '[WARN] dracut failed after plymouth removal; continuing'; true; }"
 else
   log "[INFO] Keeping Plymouth (REMOVE_PLYMOUTH=0)."
 fi
 
-# 5) Option : initramfs hostonly (plus petit/rapide)
+# 5) Option : initramfs hostonly
 if [[ "${DRACUT_HOSTONLY}" == "1" ]]; then
   log "[INFO] Enabling dracut hostonly"
-  run "mkdir -p /etc/dracut.conf.d"
-  run "bash -lc 'echo hostonly=\\\"yes\\\" > /etc/dracut.conf.d/10-hostonly.conf'"
-  run "dracut --force"
+  do_root "mkdir -p /etc/dracut.conf.d"
+  do_root "bash -lc 'echo hostonly=\\\"yes\\\" > /etc/dracut.conf.d/10-hostonly.conf'"
+  do_root "dracut -f -v || { echo '[WARN] dracut hostonly rebuild failed; continuing'; true; }"
 fi
 
-# 6) Rebuild GRUB config (utile si encore lu directement)
+# 6) Rebuild GRUB config
 GRUB_CFG="$(detect_grub_cfg)"
 log "[INFO] Rebuilding GRUB config at: $GRUB_CFG"
-run "grub2-mkconfig -o '$GRUB_CFG' || true"
+do_root "grub2-mkconfig -o '$GRUB_CFG' || true"
 
 log "[OK] Boot optimization applied. Mesure les gains :"
 log "  systemd-analyze && systemd-analyze critical-chain"
