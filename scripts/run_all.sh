@@ -39,8 +39,8 @@ for s in "${STEPS[@]}"; do
     echo "[WARN] Missing: $script — skipping."
     continue
   fi
-  if [[ ! -x "$script" ]]; then
-    echo "[WARN] Not executable: $script — try: chmod +x \"$script\". Skipping."
+  if [[ ! -r "$script" ]]; then
+    echo "[WARN] Not readable: $script — check permissions. Skipping."
     continue
   fi
 
