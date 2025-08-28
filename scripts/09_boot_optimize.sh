@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 shopt -s lastpipe
+set -o errtrace
 
 # -------------------------------------------------------------
 # Fedora boot optimization (GRUB+BLS), idempotent
@@ -14,21 +15,30 @@ shopt -s lastpipe
 . "$(dirname "$0")/00_helpers.sh"
 
 # --- Options (surchargées via env/.env) ----------------------
-: "${DRY_RUN:=0}"                  # 1 = prévisualisation
+: "${DRY_RUN:=0}"                      # 1 = prévisualisation
 : "${REMOVE_PLYMOUTH:=${REMOVE_PLYMOUTH:-0}}"
 : "${DRACUT_HOSTONLY:=0}"
 : "${KARGS_DROP_RHGB:=1}"
 : "${KARGS_DROP_QUIET:=0}"
 : "${KARGS_ADD_NOWATCHDOG:=0}"
+: "${VERBOSE:=0}"                      # 1 = trace (debug)
 # -------------------------------------------------------------
+
+[[ "$VERBOSE" == "1" ]] && set -x
 
 SERVICES_LIST="${ROOT_DIR}/lists/services-disable.txt"
 
 log()  { printf '%s\n' "$*"; }
 warn() { printf '[WARN] %s\n' "$*" >&2; }
 
+# Trace l’erreur exacte si ça casse (utile sous make)
+on_err() {
+  echo "[ERR] command failed (line $LINENO): $BASH_COMMAND" >&2
+}
+trap on_err ERR
+
+# Exécuter via sudo/as_root, en respectant DRY_RUN
 do_root() {
-  # Exécute via as_root, mais respecte DRY_RUN
   if [[ "$DRY_RUN" == "1" ]]; then
     log "[DRY] $*"
   else
@@ -36,9 +46,15 @@ do_root() {
   fi
 }
 
-# (Facultatif) échauffe sudo pour éviter un prompt sous make
-if [[ "${DRY_RUN:-0}" != "1" ]]; then
-  sudo -v || { echo "[ERR] This step needs sudo (user in wheel)."; exit 1; }
+# Pré-chauffe sudo et keep-alive pendant le script (évite Error 1 sous make)
+if [[ "$DRY_RUN" != "1" ]]; then
+  if ! sudo -v; then
+    echo "[ERR] Need sudo (user in wheel). Run 'sudo -v' then retry." >&2
+    exit 1
+  fi
+  ( while true; do sleep 60; sudo -n true 2>/dev/null || exit; done ) &
+  SUDO_KEEPALIVE_PID=$!
+  trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true' EXIT
 fi
 
 # 0) Résumé
@@ -50,7 +66,7 @@ disable_one() {
   local unit="$1"
   [[ -z "${unit// /}" || "$unit" =~ ^# ]] && return 0
   log "[INFO] Disabling service: $unit"
-  # ta helper disable_service utilise déjà as_root
+  # helpers -> disable_service utilise déjà as_root
   disable_service "$unit" || true
 }
 
@@ -72,7 +88,7 @@ do_root "systemctl mask plymouth-quit-wait.service 2>/dev/null || true"
 # 2) GRUB : timeout + menu caché (avec backup)
 GRUB_DEFAULT="/etc/default/grub"
 ts="$(date +%s)"
-do_root "cp -a '$GRUB_DEFAULT' '${GRUB_DEFAULT}.bak.${ts}' || true"
+do_root "cp -a '$GRUB_DEFAULT' '${GRUB_DEFAULT}.bak.${ts}' 2>/dev/null || true"
 
 do_root "bash -lc '
   set -euo pipefail
@@ -92,7 +108,7 @@ else
 fi
 
 # 4) Option : retirer Plymouth puis reconstruire initramfs
-if [[ "${REMOVE_PLYMOUTH}" == "1" ]]; then
+if [[ "$REMOVE_PLYMOUTH" == "1" ]]; then
   log "[INFO] Removing Plymouth and rebuilding initramfs"
   do_root "dnf -y remove 'plymouth*' || true"
   do_root "dracut -f -v || { echo '[WARN] dracut failed after plymouth removal; continuing'; true; }"
@@ -101,7 +117,7 @@ else
 fi
 
 # 5) Option : initramfs hostonly
-if [[ "${DRACUT_HOSTONLY}" == "1" ]]; then
+if [[ "$DRACUT_HOSTONLY" == "1" ]]; then
   log "[INFO] Enabling dracut hostonly"
   do_root "mkdir -p /etc/dracut.conf.d"
   do_root "bash -lc 'echo hostonly=\\\"yes\\\" > /etc/dracut.conf.d/10-hostonly.conf'"
