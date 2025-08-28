@@ -216,10 +216,28 @@ echo "[OK] External RPMs installed"
 
 # --- AppImages ---
 APPIMG_LIST="$ROOT_DIR/lists/appimages.txt"
+APPDIR="$(user_home "$TARGET_USER")/.local/share/AppImages"
+GL_CONF_FILE="$(user_home "$TARGET_USER")/.var/app/it.mijorus.gearlever/config/glib-2.0/settings/keyfile"
+
+as_root "bash -lc '
+  set -euo pipefail
+  [[ -f \"$GL_CONF_FILE\" ]] || touch \"$GL_CONF_FILE\"
+  cp -a \"$GL_CONF_FILE\" \"$GL_CONF_FILE.bak.$ts\"
+  grep -q \"^\[it\/mijorus\/gearlever\]\" \"$GL_CONF_FILE\" || echo \"[it/mijorus/gearlever]\" >> \"$GL_CONF_FILE\"
+  # remove previous occurrences to avoid duplicates
+  sed -i \"/^is-maximized=/d;/^appimages-default-folder=/d\" \"$GL_CONF_FILE\"
+  # append our tuned block
+  cat >> \"$GL_CONF_FILE\" <<EOF
+is-maximized=true
+appimages-default-folder='$APPDIR'
+EOF
+  echo \"[OK] GL keyfile tuned (backup: $GL_CONF_FILE.bak.$ts)\"
+'"
 
 if [[ -f "$APPIMG_LIST" ]]; then
-  APPDIR="$(user_home "$TARGET_USER")/.AppImages"
+  TMPDIR="/tmp/AppImages/"
   as_user "mkdir -p '$APPDIR'"
+  as_user "mkdir -p '$TMPDIR'"
 
   # -------- helpers (GitHub) --------
   gh_api() {
@@ -337,7 +355,7 @@ if [[ -f "$APPIMG_LIST" ]]; then
       fi
       fname="${url##*/}"
       fname="${fname%%\?*}"
-      target="$APPDIR/$fname"
+      target="$TMPDIR/$fname"
       if [[ -f "$target" ]]; then
         echo "[SKIP] Already present: $target"
         continue
@@ -347,7 +365,7 @@ if [[ -f "$APPIMG_LIST" ]]; then
     else
       url="$entry"
       fname="$(guess_appimage_filename "$url")"
-      target="$APPDIR/$fname"
+      target="$TMPDIR/$fname"
       if [[ -f "$target" ]]; then
         echo "[SKIP] Already present: $target"
         continue
@@ -373,7 +391,7 @@ if $GL_CMD --help 2>/dev/null | grep -q -- '--assume-yes'; then
 fi
 
 integrate_and_update_appimages() {
-  local appdir="${APPDIR:-$HOME/.AppImages}"
+  local appdir="${TMPDIR:-$HOME/.AppImages}"
   [[ -d "$appdir" ]] || return 0
 
   echo "[INFO] Integration/Update Gear Lever in: $appdir"
@@ -418,9 +436,6 @@ integrate_and_update_appimages() {
   echo "[INFO] Checking for Gear Lever updates…"
   $GL_CMD --list-updates || true
 }
-
-ADD CORRECT FOLDER FOR APPIMAGE INTEGRATION WITH GEAR LEVER
-
 integrate_and_update_appimages
 
 echo "[OK] External AppImages installed & integrated"
