@@ -218,6 +218,7 @@ echo "[OK] External RPMs installed"
 APPIMG_LIST="$ROOT_DIR/lists/appimages.txt"
 APPDIR="$(user_home "$TARGET_USER")/.local/share/AppImages"
 GL_CONF_FILE="$(user_home "$TARGET_USER")/.var/app/it.mijorus.gearlever/config/glib-2.0/settings/keyfile"
+ts="$(date +%s)"
 
 as_root "bash -lc '
   set -euo pipefail
