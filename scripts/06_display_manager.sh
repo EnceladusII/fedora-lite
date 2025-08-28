@@ -19,19 +19,50 @@ as_root "dnf -y remove greetd tuigreet" || true
 
 # 2) Installing dependencies
 echo "[INFO] Installing build/runtime dependencies…"
-as_root "dnf -y install kbd kernel-devel pam-devel libxcb-devel zig xorg-x11-xauth xorg-x11-server-common brightnessctl"
+# Added curl, tar, xz for the portable Zig download/extract
+as_root "dnf -y install kbd kernel-devel pam-devel libxcb-devel zig xorg-x11-xauth xorg-x11-server-common brightnessctl curl tar xz"
 
-# Verify Zig (Ly need 0.14.x)
+# --- Portable Zig 0.15 shim (no system replacement) ---
+# If system zig isn't 0.15.x, fetch a portable toolchain into /opt/zig-<ver> and prepend to PATH.
+ZIG_REQUIRED="${ZIG_REQUIRED:-0.15.0}"     # change to 0.15.1/0.15.2 if Ly requires it
+ZIG_ROOT="/opt/zig-${ZIG_REQUIRED}"
+ZIG_BIN="${ZIG_ROOT}/zig"
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64)   ZIG_ARCH="x86_64" ;;
+  aarch64)  ZIG_ARCH="aarch64" ;;
+  *) echo "[ERROR] Unsupported arch: $ARCH"; exit 1 ;;
+esac
+
+need_portable_zig=true
 if command -v zig >/dev/null 2>&1; then
-  ZIG_VER="$(zig version || true)"
-  case "${ZIG_VER}" in
-    0.14.*) echo "[INFO] Zig ${ZIG_VER} OK";;
-    *) echo "[WARN] Expected Zig 0.14.x, found ${ZIG_VER}. Build may fail.";;
+  SYS_ZIG_VER="$(zig version || true)"
+  case "${SYS_ZIG_VER}" in
+    0.15.*) need_portable_zig=false; ZIG_BIN="$(command -v zig)"; echo "[INFO] System Zig ${SYS_ZIG_VER} OK";;
+    *)      echo "[WARN] System Zig ${SYS_ZIG_VER} != 0.15.x — will use portable toolchain.";;
   esac
 else
-  echo "[ERROR] zig not found after installation."
-  exit 1
+  echo "[WARN] No system zig — will use portable toolchain."
 fi
+
+if $need_portable_zig; then
+  if [[ ! -x "${ZIG_BIN}" ]]; then
+    echo "[INFO] Installing portable Zig ${ZIG_REQUIRED} to ${ZIG_ROOT}…"
+    as_root "mkdir -p '${ZIG_ROOT}'"
+    TMP_TGZ="/tmp/zig-linux-${ZIG_ARCH}-${ZIG_REQUIRED}.tar.xz"
+    TMP_DIR="/tmp/zig-${ZIG_REQUIRED}"
+    curl -L "https://ziglang.org/download/${ZIG_REQUIRED}/zig-linux-${ZIG_ARCH}-${ZIG_REQUIRED}.tar.xz" -o "${TMP_TGZ}"
+    mkdir -p "${TMP_DIR}"
+    tar -C "${TMP_DIR}" -xf "${TMP_TGZ}"
+    INNER_DIR="$(find "${TMP_DIR}" -maxdepth 1 -type d -name 'zig-*' | head -n1)"
+    as_root "cp -a '${INNER_DIR}/.' '${ZIG_ROOT}/'"
+    as_root "chmod -R a+rX '${ZIG_ROOT}'"
+  fi
+  echo "[INFO] Using portable Zig at ${ZIG_BIN}: $(${ZIG_BIN} version)"
+fi
+
+# Ensure this script prefers the selected zig
+export PATH="$(dirname "${ZIG_BIN}"):${PATH}"
 
 # 3) Clone and Build Ly
 REPO_URL="${REPO_URL:-https://codeberg.org/fairyglade/ly.git}"
@@ -59,7 +90,8 @@ as_root "install -D -m 0644 '${ROOT_DIR}/config/ly/config.${THEME}.ini' /etc/ly/
 as_root "install -D -m 0644 '${ROOT_DIR}/config/pam.d/ly'      /etc/pam.d/ly"
 
 # Optional autologin
-if grep -q "__TARGET_USER__" "${ROOT_DIR}/config/ly/config.ini"; then
+# (Fix) Check and replace in the installed /etc/ly/config.ini
+if grep -q "__TARGET_USER__" /etc/ly/config.ini 2>/dev/null; then
   as_root "sed -i 's/__TARGET_USER__/${TARGET_USER}/g' /etc/ly/config.ini"
 fi
 
