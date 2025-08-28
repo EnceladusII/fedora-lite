@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Install Ly v1.1.x using system Zig 0.14.x (Fedora 42)
+# Install Ly v1.1.x (codebranch) using system Zig 0.14.x (Fedora 42)
 
 . "$(dirname "$0")/00_helpers.sh"
 
