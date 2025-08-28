@@ -216,6 +216,7 @@ echo "[OK] External RPMs installed"
 
 # --- AppImages ---
 APPIMG_LIST="$ROOT_DIR/lists/appimages.txt"
+
 if [[ -f "$APPIMG_LIST" ]]; then
   APPDIR="$(user_home "$TARGET_USER")/.AppImages"
   as_user "mkdir -p '$APPDIR'"
@@ -280,7 +281,7 @@ if [[ -f "$APPIMG_LIST" ]]; then
     [[ "$1" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
   }
 
-  # -------- helpers (AppImages locales) --------
+  # -------- helpers (AppImages locals) --------
   is_appimage_file() {
     local file="$1"
     head -c 2 "$file" 2>/dev/null | grep -q '^AI'
@@ -290,7 +291,6 @@ if [[ -f "$APPIMG_LIST" ]]; then
     local url="$1"
     local final_url header final_name
 
-    # suivre redirections pour choper le vrai nom
     final_url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$url" || echo "$url")"
 
     header="$(curl -sSIL "$url" | grep -i 'content-disposition' || true)"
@@ -324,7 +324,7 @@ if [[ -f "$APPIMG_LIST" ]]; then
     as_user "chmod +x '$target'"
   }
 
-  # -------- main loop (téléchargement) --------
+  # -------- main loop (downloads) --------
   while IFS= read -r entry; do
     [[ -z "${entry// /}" || "$entry" =~ ^# ]] && continue
 
@@ -357,8 +357,10 @@ if [[ -f "$APPIMG_LIST" ]]; then
   done < <(apply_list "$APPIMG_LIST")
 fi
 
-# -------- Intégration via Gear Lever --------
+# -------- Integration via Gear Lever --------
 GL_CMD=""
+as_root "dnf -y install fuse fuse-libs"
+
 if command -v gearlever >/dev/null 2>&1; then
   GL_CMD="gearlever"
 else
@@ -374,7 +376,7 @@ integrate_and_update_appimages() {
   local appdir="${APPDIR:-$HOME/.AppImages}"
   [[ -d "$appdir" ]] || return 0
 
-  echo "[INFO] Intégration/MAJ Gear Lever dans: $appdir"
+  echo "[INFO] Integration/Update Gear Lever in: $appdir"
 
   local installed
   installed="$($GL_CMD --list-installed 2>/dev/null || true)"
@@ -388,34 +390,36 @@ integrate_and_update_appimages() {
     [[ -x "$f" ]] || chmod +x "$f" 2>/dev/null || true
 
     if ! is_appimage_file "$f" && [[ ! "$f" =~ \.AppImage$ ]]; then
-      echo "[SKIP] $(basename "$f") n'est pas détecté comme AppImage."
+      echo "[SKIP] $(basename "$f") not detected as an AppImage."
       continue
     fi
 
     local base="$(basename "$f")"
-    echo "[INFO] Candidat: $base"
+    echo "[INFO] Candidate: $base"
 
     if printf '%s\n' "$installed" | grep -Fq -- "$base"; then
-      echo "  └─ Déjà intégré → update…"
-      $GL_CMD --update $GL_YES "$f" >/dev/null 2>&1 || echo "     ⚠️ Pas d'update dispo"
+      echo "  └─ Already integrate → update…"
+      $GL_CMD --update $GL_YES "$f" >/dev/null 2>&1 || echo "[INFO] No update available"
       $GL_CMD --reload-metadata "$f" >/dev/null 2>&1 || true
     else
-      echo "  └─ Intégration…"
+      echo "  └─ Integration…"
       if $GL_CMD --integrate $GL_YES "$f" </dev/null 2>/dev/null; then
-        echo "     ✓ Intégré"
+        echo "[OK] $base installed"
         $GL_CMD --reload-metadata "$f" >/dev/null 2>&1 || true
         installed="$($GL_CMD --list-installed 2>/dev/null || printf '%s' "$installed")"
       else
         if command -v yes >/dev/null 2>&1; then
-          yes | $GL_CMD --integrate "$f" >/dev/null 2>&1 && echo "     ✓ Intégré (fallback yes)" && $GL_CMD --reload-metadata "$f" >/dev/null 2>&1 || echo "     ❌ Échec intégration"
+          yes | $GL_CMD --integrate "$f" >/dev/null 2>&1 && echo "[OK] Integrate (fallback yes)" && $GL_CMD --reload-metadata "$f" >/dev/null 2>&1 || echo "[WARN] Integration failed"
         fi
       fi
     fi
   done < <(find "$appdir" -maxdepth 1 -type f \( -iname '*.AppImage' -o -perm -u+x \) ! -iname '*.zsync' -print0)
 
-  echo "[INFO] Vérif des updates Gear Lever…"
+  echo "[INFO] Checking for Gear Lever updates…"
   $GL_CMD --list-updates || true
 }
+
+ADD CORRECT FOLDER FOR APPIMAGE INTEGRATION WITH GEAR LEVER
 
 integrate_and_update_appimages
 
