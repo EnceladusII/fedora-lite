@@ -59,7 +59,7 @@ echo "[INFO] GPU détecté = $gpu"
 echo "[INFO] CUDA via ${CUDA_REPO:-official} (INSTALL_CUDA=${INSTALL_CUDA:-1}) | ROCm via ${ROCM_REPO:-amd} (INSTALL_ROCM=${INSTALL_ROCM:-1})"
 
 # ---- OpenCL ICD loader + headers ----
-ensure_pkg ocl-icd clinfo opencl-headers ocl-icd-devel
+ensure_pkg OpenCL-ICD-Loader OpenCL-ICD-Loader-devel clinfo opencl-headers
 
 # ---- CUDA toolkit ----
 install_cuda_official() {
