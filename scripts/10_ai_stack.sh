@@ -1,113 +1,145 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Install AI stack: CUDA (NVIDIA), ROCm (AMD), and OpenCL ICDs/tools.
-# Runs as user; uses as_root for system actions. Best-effort per distro state.
+# AI dev stack (userland only): CUDA toolkit, ROCm userland, OpenCL loader/tools.
+# NOTE: Drivers are handled by a separate script; we only install userland libs here.
 
 . "$(dirname "$0")/00_helpers.sh"
 
-detect_gpu() {
-  if [[ "${GPU:-auto}" != "auto" ]]; then
-    echo "$GPU"; return
-  fi
-  if lspci | grep -qi nvidia; then
-    echo nvidia
-  elif lspci | grep -qi 'amd/ati'; then
-    echo amd
-  elif lspci | grep -qi 'intel corporation.*graphics'; then
-    echo intel
-  else
-    echo unknown
-  fi
-}
-
-gpu="$(detect_gpu)"
-echo "[INFO] AI stack: detected GPU = $gpu"
-echo "[INFO] CUDA: INSTALL_CUDA=${INSTALL_CUDA:-1} via ${CUDA_REPO:-official} | ROCm: INSTALL_ROCM=${INSTALL_ROCM:-1} via ${ROCM_REPO:-amd}"
-
-# --- Common: OpenCL ICD loader + tools ---
-echo "[INFO] Installing OpenCL ICD loader + clinfo"
-as_root "dnf -y install ocl-icd clinfo || true"
-
-# --- NVIDIA: CUDA Toolkit (optional) ---
-install_cuda_official() {
-  echo "[INFO] Installing CUDA (official NVIDIA repo)"
+# ---- guards/help ----
+is_ostree() { command -v rpm-ostree >/dev/null 2>&1; }
+in_container() { [[ -f /.dockerenv ]] || grep -qaE 'container|toolbox' /proc/1/environ 2>/dev/null; }
+run() { if [[ "${DRY_RUN:-0}" == "1" ]]; then echo "+ $*"; else eval "$@"; fi; }
+need_dnf_plugins() { as_root "dnf -y install dnf-plugins-core || true"; }
+ensure_rpmfusion() {
   as_root "bash -lc '
     set -euo pipefail
-    ver=\$(rpm -E %fedora)
-    # Add NVIDIA CUDA repo (pattern used by NVIDIA; may change across releases)
-    repo_url=\"https://developer.download.nvidia.com/compute/cuda/repos/fedora\${ver}/x86_64/cuda-fedora\${ver}.repo\"
-    if curl -fsSL \"\$repo_url\" >/dev/null; then
-      dnf -y config-manager --add-repo \"\$repo_url\"
-      dnf -y install cuda-toolkit || dnf -y install cuda || true
-    else
-      echo \"[WARN] CUDA repo URL not found for Fedora \$ver. Skipping official CUDA.\" >&2
-      exit 0
+    if ! dnf repolist | grep -qi rpmfusion; then
+      ver=\$(rpm -E %fedora)
+      dnf -y install \
+        https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-\${ver}.noarch.rpm \
+        https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-\${ver}.noarch.rpm || true
     fi
   '"
 }
 
-install_cuda_rpmfusion() {
-  echo "[INFO] Installing CUDA (RPMFusion)"
-  # CUDA runtime libs often come with NVIDIA driver pkgs; toolkit may be cuda-toolkit
-  as_root "dnf -y install cuda-toolkit || dnf -y install cuda || true"
-}
-
-if [[ "$gpu" == "nvidia" && "${INSTALL_CUDA:-1}" == "1" ]]; then
-  case "${CUDA_REPO:-official}" in
-    official)  install_cuda_official ;;
-    rpmfusion) install_cuda_rpmfusion ;;
-    skip)      echo "[INFO] Skipping CUDA per .env";;
-    *)         echo "[WARN] Unknown CUDA_REPO='${CUDA_REPO}'. Skipping CUDA.";;
-  esac
-else
-  echo "[INFO] CUDA not requested or not on NVIDIA."
+if is_ostree; then
+  echo "[ERROR] rpm-ostree détecté (Silverblue/Kinoite). Utilise 'rpm-ostree install' ou un conteneur. Abandon."; exit 1
 fi
+if in_container; then
+  echo "[INFO] Container/Toolbox détecté: OK pour libs userland; pas de pilotes ici (normal)."
+fi
+need_dnf_plugins
 
-# --- AMD: ROCm (optional/best-effort on Fedora) ---
-install_rocm_amd_repo() {
-  echo "[INFO] Installing ROCm (AMD upstream repo; availability varies on Fedora)"
+# ---- GPU detection (pas de pilote ici) ----
+detect_gpu() {
+  if [[ "${GPU:-auto}" != "auto" ]]; then echo "$GPU"; return; fi
+  if lspci | grep -qi nvidia; then echo nvidia
+  elif lspci | grep -qi 'amd/ati'; then echo amd
+  elif lspci | grep -qi 'intel corporation.*graphics'; then echo intel
+  else echo unknown
+  fi
+}
+gpu="$(detect_gpu)"
+echo "[INFO] GPU détecté = $gpu"
+echo "[INFO] CUDA via ${CUDA_REPO:-official} (INSTALL_CUDA=${INSTALL_CUDA:-1}) | ROCm via ${ROCM_REPO:-amd} (INSTALL_ROCM=${INSTALL_ROCM:-1})"
+
+# ---- OpenCL ICD loader + headers ----
+echo "[INFO] OpenCL ICD loader + tools + headers"
+as_root "dnf -y install ocl-icd clinfo opencl-headers ocl-icd-devel || true"
+
+# ---- CUDA toolkit (sans pilote) ----
+install_cuda_official() {
+  echo "[INFO] CUDA toolkit (repo NVIDIA officiel)"
   as_root "bash -lc '
     set -euo pipefail
-    # AMD’s official repos primarily target RHEL/UBI/Ubuntu; Fedora support may be limited.
-    # Try common meta packages; fail softly if not present.
+    ver=\$(rpm -E %fedora)
+    repo_url=\"https://developer.download.nvidia.com/compute/cuda/repos/fedora\${ver}/x86_64/cuda-fedora\${ver}.repo\"
+    if curl -fsSL \"\$repo_url\" >/dev/null; then
+      dnf -y config-manager --add-repo \"\$repo_url\"
+      rpm --import https://developer.download.nvidia.com/compute/cuda/repos/fedora\${ver}/x86_64/D42D0685.pub || true
+      dnf -y install cuda-toolkit || dnf -y install cuda || true
+    else
+      echo \"[WARN] Pas de repo CUDA pour Fedora \${ver}.\" >&2
+      exit 2
+    fi
+  '"
+}
+install_cuda_rpmfusion() {
+  echo "[INFO] CUDA toolkit (RPM Fusion)"
+  ensure_rpmfusion
+  as_root "dnf -y install cuda-toolkit || dnf -y install cuda || true"
+}
+if [[ "$gpu" == "nvidia" && "${INSTALL_CUDA:-1}" == "1" ]]; then
+  case "${CUDA_REPO:-official}" in
+    official)  install_cuda_official || install_cuda_rpmfusion ;;
+    rpmfusion) install_cuda_rpmfusion ;;
+    skip)      echo "[INFO] CUDA ignoré (env)";;
+    *)         echo "[WARN] CUDA_REPO='${CUDA_REPO}' inconnu. Skip.";;
+  esac
+else
+  echo "[INFO] CUDA non demandé ou GPU ≠ NVIDIA."
+fi
+
+# ---- ROCm userland (sans pilote) ----
+install_rocm_amd_repo() {
+  echo "[INFO] ROCm (AMD upstream; Fedora variable)"
+  as_root "bash -lc '
+    set -euo pipefail
     dnf -y install rocminfo rocm-smi || true
     dnf -y install rocm-opencl rocm-opencl-runtime || true
     dnf -y install hip-runtime-amd hip-devel || true
     dnf -y install rocblas rocrand miopen-hip || true
   '"
 }
-
 install_rocm_copr() {
-  echo "[INFO] Installing ROCm (COPR path; ensure you enabled a suitable COPR in lists/coprs.txt)"
-  # We assume the COPR (e.g., a ROCm community build) is already enabled at step 4.
+  echo "[INFO] ROCm (COPR; suppose un COPR déjà activé)"
   as_root "dnf -y install rocminfo rocm-smi rocm-opencl rocm-opencl-runtime hip-runtime-amd hip-devel || true"
 }
-
 if [[ "$gpu" == "amd" && "${INSTALL_ROCM:-1}" == "1" ]]; then
   case "${ROCM_REPO:-amd}" in
     amd)  install_rocm_amd_repo ;;
     copr) install_rocm_copr ;;
-    skip) echo "[INFO] Skipping ROCm per .env" ;;
-    *)    echo "[WARN] Unknown ROCM_REPO='${ROCM_REPO}'. Skipping ROCm." ;;
+    skip) echo "[INFO] ROCm ignoré (env)";;
+    *)    echo "[WARN] ROCM_REPO='${ROCM_REPO}' inconnu. Skip.";;
   esac
 else
-  echo "[INFO] ROCm not requested or not on AMD."
+  echo "[INFO] ROCm non demandé ou GPU ≠ AMD."
 fi
 
-# --- Intel note (no CUDA/ROCm) ---
+# ---- Intel userland (OpenCL/Level Zero) ----
 if [[ "$gpu" == "intel" ]]; then
-  echo "[INFO] Intel GPU: consider Level Zero / oneAPI (not installed here)."
+  echo "[INFO] Intel GPU: runtimes Level Zero / OpenCL (best-effort)"
+  # On tente plusieurs noms de paquets Fedora connus; tout est best-effort.
+  as_root "dnf -y install level-zero intel-level-zero-gpu intel-compute-runtime ocl-icd || true"
+  as_root "dnf -y install intel-ocloc || true"
 fi
 
-# --- Post-install sanity checks ---
-echo "[INFO] Running quick sanity checks"
-as_root "which clinfo >/dev/null 2>&1 && clinfo | head -n 20 || true"
+# ---- /etc/profile.d exports (non-intrusif, safe si les dossiers existent) ----
+echo "[INFO] /etc/profile.d/ai-env.sh"
+as_root "bash -lc '
+cat >/etc/profile.d/ai-env.sh <<EOF
+# AI toolchain env (generated; drivers non requis)
+[ -d /usr/local/cuda ] && export CUDA_PATH=/usr/local/cuda && export PATH=\$CUDA_PATH/bin:\$PATH && export LD_LIBRARY_PATH=\${LD_LIBRARY_PATH:+\$LD_LIBRARY_PATH:}\$CUDA_PATH/lib64
+[ -d /opt/rocm ] && export ROCM_PATH=/opt/rocm && export HIP_PATH=/opt/rocm && export PATH=\$ROCM_PATH/bin:\$PATH && export LD_LIBRARY_PATH=\${LD_LIBRARY_PATH:+\$LD_LIBRARY_PATH:}\$ROCM_PATH/lib
+EOF
+chmod 0644 /etc/profile.d/ai-env.sh
+'"
+
+# ---- Sanity checks (n'échouent pas si drivers pas encore posés) ----
+echo "[INFO] clinfo (top 30 lignes):"
+as_root "command -v clinfo >/dev/null 2>&1 && clinfo | head -n 30 || echo '[INFO] clinfo indisponible'"
+
+echo "[INFO] ICD OpenCL présents:"
+as_root "bash -lc 'ls -1 /etc/OpenCL/vendors/*.icd 2>/dev/null || echo (aucun)'"
 
 if [[ "$gpu" == "nvidia" && "${INSTALL_CUDA:-1}" == "1" ]]; then
-  as_root "command -v nvcc >/dev/null 2>&1 && nvcc --version || echo '[INFO] nvcc not found (toolkit may be libs-only or install failed softly)'"
+  as_root "command -v nvcc >/dev/null 2>&1 && nvcc --version || echo '[INFO] nvcc non trouvé (toolkit absent/libre), ou PATH non source'"
+  as_root "command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi || echo '[INFO] nvidia-smi indisponible (pilote posé ailleurs ou non chargé — OK)'"
 fi
 if [[ "$gpu" == "amd" && "${INSTALL_ROCM:-1}" == "1" ]]; then
-  as_root "command -v rocminfo >/dev/null 2>&1 && rocminfo | head -n 20 || echo '[INFO] rocminfo not available (packages may be missing on Fedora release)'"
+  as_root "command -v rocminfo >/dev/null 2>&1 && rocminfo | head -n 20 || echo '[INFO] rocminfo indisponible (pilote ROCr non actif — OK)'"
+  as_root "command -v rocm-smi >/dev/null 2>&1 && rocm-smi || echo '[INFO] rocm-smi indisponible (pilote posé ailleurs — OK)'"
+  as_root "command -v hipcc >/dev/null 2>&1 && hipcc --version || true"
 fi
 
-echo "[OK] AI stack step completed (best-effort). Review warnings above if any package was unavailable for your Fedora release."
+echo "[OK] AI userland installé (best-effort). Les drivers seront gérés par ton autre script."
