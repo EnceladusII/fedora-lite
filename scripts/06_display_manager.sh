@@ -11,7 +11,7 @@ set -euo pipefail
 echo "[INFO] Switching to Ly Display Manager"
 echo "[INFO] TARGET_USER=${TARGET_USER}"
 
-# 1) Disable others DMs (gdm or greetd)
+# 1) Disable other DMs (gdm or greetd)
 echo "[INFO] Disabling conflicting display managers…"
 disable_service gdm.service || true
 as_root "systemctl disable --now greetd.service" || true
@@ -19,8 +19,8 @@ as_root "dnf -y remove greetd tuigreet" || true
 
 # 2) Installing dependencies
 echo "[INFO] Installing build/runtime dependencies…"
-# Added curl, tar, xz for the portable Zig download/extract
-as_root "dnf -y install kbd kernel-devel pam-devel libxcb-devel zig xorg-x11-xauth xorg-x11-server-common brightnessctl curl tar xz"
+# add curl, tar, xz, file for portable Zig handling
+as_root "dnf -y install kbd kernel-devel pam-devel libxcb-devel zig xorg-x11-xauth xorg-x11-server-common brightnessctl curl tar xz file"
 
 # --- Portable Zig 0.15 shim (no system replacement) ---
 # If system zig isn't 0.15.x, fetch a portable toolchain into /opt/zig-<ver> and prepend to PATH.
@@ -45,18 +45,67 @@ else
   echo "[WARN] No system zig — will use portable toolchain."
 fi
 
+download_and_install_zig() {
+  local ver="$1" arch="$2" dest_root="$3"
+  local tmpdir tgz inner urls ok=false
+  tmpdir="$(mktemp -d)"
+  tgz="${tmpdir}/zig-linux-${arch}-${ver}.tar.xz"
+
+  # URLs to try (primary ziglang.org + fallback GitHub)
+  urls=(
+    "https://ziglang.org/download/${ver}/zig-linux-${arch}-${ver}.tar.xz"
+    "https://github.com/ziglang/zig/releases/download/${ver}/zig-linux-${arch}-${ver}.tar.xz"
+  )
+
+  for url in "${urls[@]}"; do
+    echo "[INFO] Fetching ${url} …"
+    if ! curl -fL --retry 3 --retry-delay 2 -o "${tgz}" "${url}"; then
+      echo "[WARN] Download failed from ${url}"
+      continue
+    fi
+
+    # Sanity checks: not HTML, valid xz
+    if file "${tgz}" | grep -qi 'HTML'; then
+      echo "[WARN] Got HTML instead of archive from ${url}"
+      continue
+    fi
+    if ! xz -t "${tgz}" >/dev/null 2>&1; then
+      echo "[WARN] xz test failed for ${tgz}"
+      continue
+    fi
+
+    # Extract
+    mkdir -p "${tmpdir}/extract"
+    if ! tar -C "${tmpdir}/extract" -xf "${tgz}"; then
+      echo "[WARN] tar extraction failed for ${tgz}"
+      continue
+    fi
+
+    inner="$(find "${tmpdir}/extract" -maxdepth 1 -type d -name 'zig-*' | head -n1)"
+    if [[ -z "${inner}" || ! -x "${inner}/zig" ]]; then
+      echo "[WARN] Could not find zig binary inside archive"
+      continue
+    fi
+
+    as_root "mkdir -p '${dest_root}'"
+    as_root "cp -a '${inner}/.' '${dest_root}/'"
+    as_root "chmod -R a+rX '${dest_root}'"
+    ok=true
+    break
+  done
+
+  rm -rf "${tmpdir}"
+  $ok || return 1
+  return 0
+}
+
 if $need_portable_zig; then
   if [[ ! -x "${ZIG_BIN}" ]]; then
     echo "[INFO] Installing portable Zig ${ZIG_REQUIRED} to ${ZIG_ROOT}…"
-    as_root "mkdir -p '${ZIG_ROOT}'"
-    TMP_TGZ="/tmp/zig-linux-${ZIG_ARCH}-${ZIG_REQUIRED}.tar.xz"
-    TMP_DIR="/tmp/zig-${ZIG_REQUIRED}"
-    curl -L "https://ziglang.org/download/${ZIG_REQUIRED}/zig-linux-${ZIG_ARCH}-${ZIG_REQUIRED}.tar.xz" -o "${TMP_TGZ}"
-    mkdir -p "${TMP_DIR}"
-    tar -C "${TMP_DIR}" -xf "${TMP_TGZ}"
-    INNER_DIR="$(find "${TMP_DIR}" -maxdepth 1 -type d -name 'zig-*' | head -n1)"
-    as_root "cp -a '${INNER_DIR}/.' '${ZIG_ROOT}/'"
-    as_root "chmod -R a+rX '${ZIG_ROOT}'"
+    if ! download_and_install_zig "${ZIG_REQUIRED}" "${ZIG_ARCH}" "${ZIG_ROOT}"; then
+      echo "[ERROR] Failed to download/install Zig ${ZIG_REQUIRED} (checked ziglang.org and GitHub)."
+      exit 1
+    fi
   fi
   echo "[INFO] Using portable Zig at ${ZIG_BIN}: $(${ZIG_BIN} version)"
 fi
@@ -89,8 +138,7 @@ echo "[INFO] Deploying Ly config + PAM…"
 as_root "install -D -m 0644 '${ROOT_DIR}/config/ly/config.${THEME}.ini' /etc/ly/config.ini"
 as_root "install -D -m 0644 '${ROOT_DIR}/config/pam.d/ly'      /etc/pam.d/ly"
 
-# Optional autologin
-# (Fix) Check and replace in the installed /etc/ly/config.ini
+# Optional autologin (replace placeholder in installed file)
 if grep -q "__TARGET_USER__" /etc/ly/config.ini 2>/dev/null; then
   as_root "sed -i 's/__TARGET_USER__/${TARGET_USER}/g' /etc/ly/config.ini"
 fi
@@ -102,9 +150,9 @@ if ! test -f /usr/share/wayland-sessions/hyprland.desktop; then
     /usr/share/wayland-sessions/hyprland.desktop"
 fi
 
-#as_root "install -D -m 0644 '${ROOT_DIR}/config/vtrgb/vtrgb' /etc/vtrgb" || true
-#as_root "install -D -m 0644 '${ROOT_DIR}/config/systemd/vt-colors.service' /etc/systemd/system/vt-colors.service" || true
-#as_root "systemctl enable vt-colors.service" || true
+# as_root "install -D -m 0644 '${ROOT_DIR}/config/vtrgb/vtrgb' /etc/vtrgb" || true
+# as_root "install -D -m 0644 '${ROOT_DIR}/config/systemd/vt-colors.service' /etc/systemd/system/vt-colors.service" || true
+# as_root "systemctl enable vt-colors.service" || true
 
 # 7) SELinux (pam.d)
 echo "[INFO] Restoring SELinux contexts…"
