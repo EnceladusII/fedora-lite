@@ -25,7 +25,7 @@ as_root "dnf -y install kbd kernel-devel pam-devel libxcb-devel zig xorg-x11-xau
 # 3) Clone Ly (optionally pin to release/tag/commit via LY_REF)
 REPO_URL="${REPO_URL:-https://codeberg.org/fairyglade/ly.git}"
 BUILD_DIR="${BUILD_DIR:-/tmp/ly}"
-LY_REF="${LY_REF:v1.0.3}"   # e.g. export LY_REF=v1.0.5 to force a 1.0.x release
+LY_REF="${LY_REF:-v1.0.3}"   # e.g. export LY_REF=v1.0.5 to force a 1.0.x release
 
 if [[ ! -d ${BUILD_DIR} ]]; then
   echo "[INFO] Cloning Ly into ${BUILD_DIR}…"
