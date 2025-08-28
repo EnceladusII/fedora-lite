@@ -129,6 +129,18 @@ do_root "grub2-mkconfig -o '$GRUB_CFG' || true"
 
 log "[OK] Boot optimization applied."
 
-# --- 8) Show boot performance -----------------------------------
-systemd-analyze critical-chain
-log "[OK] Boot optimization completed."
+# --- 8) Show boot metrics before/after (same boot) --------------
+read -r KERNEL INITRD USERSPACE TOTAL < <(
+  systemd-analyze time --no-pager \
+  | sed -E 's/.*in ([0-9.]+)s .* \+ ([0-9.]+)s .* \+ ([0-9.]+)s .* = ([0-9.]+)s.*/\1 \2 \3 \4/'
+)
+
+echo "[INFO] Current boot (baseline):"
+echo "  Kernel    : ${KERNEL}s"
+echo "  Initrd    : ${INITRD}s"
+echo "  Userspace : ${USERSPACE}s"
+echo "  Total     : ${TOTAL}s"
+
+echo "[NOTE] Optimizations just applied. Real improvement will be visible"
+echo "       only on the next reboot. Run 'systemd-analyze time' again"
+echo "       after restarting to compare."
