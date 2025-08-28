@@ -8,6 +8,17 @@ ROOT_DIR="$(cd "$DIR/.." && pwd)"
 
 banner() { printf "\n==== %s ====\n" "$1"; }
 
+confirm() {
+  while true; do
+    read -rp "Proceed to the next step? (y/n) " answer
+    case "$answer" in
+      [Yy]* ) break ;;
+      [Nn]* ) echo "Aborted."; exit 1 ;;
+      * ) echo "Please answer y or n." ;;
+    esac
+  done
+}
+
 # Steps list
 STEPS=(
   "01_config_dnf"
@@ -27,9 +38,10 @@ for s in "${STEPS[@]}"; do
   if [[ -x "$script" ]]; then
     banner "$s"
     bash "$script"
+    confirm
   else
     echo "[WARN] Missing or non-executable: $script — skipping."
   fi
 done
 
-banner "done"
+banner "All steps completed!"
