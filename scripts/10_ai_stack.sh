@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# AI dev stack (userland only): CUDA toolkit, ROCm userland, OpenCL loader/tools.
-# NOTE: Drivers are handled by a separate script; we only install userland libs here.
+# AI dev stack (userland only): CUDA toolkit, ROCm userland, OpenCL loader/outils.
+# NOTE: Les pilotes (drivers) sont gérés par un autre script. Ici on installe uniquement les libs/outils userspace.
 
 . "$(dirname "$0")/00_helpers.sh"
 
@@ -109,12 +109,11 @@ fi
 # ---- Intel userland (OpenCL/Level Zero) ----
 if [[ "$gpu" == "intel" ]]; then
   echo "[INFO] Intel GPU: runtimes Level Zero / OpenCL (best-effort)"
-  # On tente plusieurs noms de paquets Fedora connus; tout est best-effort.
   as_root "dnf -y install level-zero intel-level-zero-gpu intel-compute-runtime ocl-icd || true"
   as_root "dnf -y install intel-ocloc || true"
 fi
 
-# ---- /etc/profile.d exports (non-intrusif, safe si les dossiers existent) ----
+# ---- /etc/profile.d exports (conditionnels) ----
 echo "[INFO] /etc/profile.d/ai-env.sh"
 as_root "bash -lc '
 cat >/etc/profile.d/ai-env.sh <<EOF
@@ -125,20 +124,29 @@ EOF
 chmod 0644 /etc/profile.d/ai-env.sh
 '"
 
-# ---- Sanity checks (n'échouent pas si drivers pas encore posés) ----
+# ---- Sanity checks (non bloquants) ----
 echo "[INFO] clinfo (top 30 lignes):"
 as_root "command -v clinfo >/dev/null 2>&1 && clinfo | head -n 30 || echo '[INFO] clinfo indisponible'"
 
 echo "[INFO] ICD OpenCL présents:"
-as_root "bash -lc 'ls -1 /etc/OpenCL/vendors/*.icd 2>/dev/null || echo (aucun)'"
+# >>> PATCH: version robuste qui ne déclenche pas d'erreur si aucun fichier
+as_root "bash -lc '
+  shopt -s nullglob
+  files=(/etc/OpenCL/vendors/*.icd)
+  if (( \${#files[@]} )); then
+    printf \"%s\n\" \"\${files[@]}\"
+  else
+    echo \"(aucun)\"
+  fi
+' || true"
 
 if [[ "$gpu" == "nvidia" && "${INSTALL_CUDA:-1}" == "1" ]]; then
-  as_root "command -v nvcc >/dev/null 2>&1 && nvcc --version || echo '[INFO] nvcc non trouvé (toolkit absent/libre), ou PATH non source'"
-  as_root "command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi || echo '[INFO] nvidia-smi indisponible (pilote posé ailleurs ou non chargé — OK)'"
+  as_root "command -v nvcc >/dev/null 2>&1 && nvcc --version || echo '[INFO] nvcc non trouvé (toolkit absent/libre), ou PATH non sourcé'"
+  as_root "command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi || echo '[INFO] nvidia-smi indisponible (pilote géré ailleurs — OK)'"
 fi
 if [[ "$gpu" == "amd" && "${INSTALL_ROCM:-1}" == "1" ]]; then
   as_root "command -v rocminfo >/dev/null 2>&1 && rocminfo | head -n 20 || echo '[INFO] rocminfo indisponible (pilote ROCr non actif — OK)'"
-  as_root "command -v rocm-smi >/dev/null 2>&1 && rocm-smi || echo '[INFO] rocm-smi indisponible (pilote posé ailleurs — OK)'"
+  as_root "command -v rocm-smi >/dev/null 2>&1 && rocm-smi || echo '[INFO] rocm-smi indisponible (pilote géré ailleurs — OK)'"
   as_root "command -v hipcc >/dev/null 2>&1 && hipcc --version || true"
 fi
 
