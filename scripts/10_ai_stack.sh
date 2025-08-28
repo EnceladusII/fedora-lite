@@ -15,7 +15,7 @@ ensure_pkg() {
   local pkgs=("$@")
   for p in "${pkgs[@]}"; do
     echo "[INFO] Installing $p"
-    as_root "dnf -y install $p"
+    as_root "dnf -y install $p || true"
     if rpm -q "$p" >/dev/null 2>&1; then
       echo "[OK] $p installé"
     else
@@ -118,7 +118,7 @@ fi
 # ---- Intel runtimes ----
 if [[ "$gpu" == "intel" ]]; then
   echo "[INFO] Intel GPU: runtimes Level Zero / OpenCL"
-  ensure_pkg level-zero intel-level-zero-gpu intel-compute-runtime ocl-icd intel-ocloc
+  ensure_pkg level-zero intel-level-zero-gpu intel-compute-runtime mesa-libOpenCL intel-ocloc
 fi
 
 # ---- /etc/profile.d exports ----
@@ -140,75 +140,37 @@ echo "[INFO] ICD OpenCL présents:"
 as_root "bash -lc '
   shopt -s nullglob
   files=(/etc/OpenCL/vendors/*.icd)
-  if (( \${#files[@]} )); then
+  if (( \${#files[@]} > 0 )); then
     printf \"%s\n\" \"\${files[@]}\"
   else
     echo \"(aucun)\"
   fi
-' || true"
+'"
 
-if [[ "$gpu" == "nvidia" && "${INSTALL_CUDA:-1}" == "1" ]]; then
-  as_root "command -v nvcc >/dev/null 2>&1 && nvcc --version || echo '[INFO] nvcc non trouvé'"
-  as_root "command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi || echo '[INFO] nvidia-smi indisponible (driver géré ailleurs — OK)'"
-fi
-if [[ "$gpu" == "amd" && "${INSTALL_ROCM:-1}" == "1" ]]; then
-  as_root "command -v rocminfo >/dev/null 2>&1 && rocminfo | head -n 20 || echo '[INFO] rocminfo indisponible'"
-  as_root "command -v rocm-smi >/dev/null 2>&1 && rocm-smi || echo '[INFO] rocm-smi indisponible'"
-  as_root "command -v hipcc >/dev/null 2>&1 && hipcc --version || true"
+# ---- Post-validation: clinfo doit voir des plateformes ----
+platforms=0
+if command -v clinfo >/dev/null 2>&1; then
+  platforms="$(clinfo 2>/dev/null | awk -F: \"/Number of platforms/ {gsub(/ /,\\\"\\\", \$2); print \$2; exit}\" || echo 0)"
 fi
 
-# ---- Validation finale: ICD + plateformes OpenCL ----
-post_validate() {
-  # Compter les ICD installés
-  local icd_count
-  icd_count="$(bash -lc 'shopt -s nullglob; files=(/etc/OpenCL/vendors/*.icd); echo ${#files[@]-0}')"
-
-  # Lire le nombre de plateformes vues par clinfo (si présent)
-  local platforms=0
-  if command -v clinfo >/dev/null 2>&1; then
-    platforms="$(clinfo 2>/dev/null | awk -F: "/Number of platforms/ {gsub(/ /,\"\",$2); print \$2; exit}" || echo 0)"
-  fi
-
-  if [[ "${icd_count}" -eq 0 || "${platforms}" -eq 0 ]]; then
-    echo "[WARN] OpenCL installé mais aucune plateforme disponible (ICD=${icd_count}, platforms=${platforms})."
-    case "$gpu" in
-      amd)
-        cat <<'EOT'
-  -> Pour AMD:
-     - Installe les ICD ROCm:  rocm-opencl rocm-opencl-runtime
-       (dans ce script: export INSTALL_ROCM=1 ; ROCM_REPO=amd|copr)
-     - Assure-toi que le pilote AMDGPU/ROCr est chargé (géré par ton script drivers).
-EOT
-        ;;
-      nvidia)
-        cat <<'EOT'
-  -> Pour NVIDIA:
-     - Le pilote propriétaire installe l'ICD OpenCL (nvidia.icd).
-     - Sur Fedora (RPM Fusion): xorg-x11-drv-nvidia-cuda fournit les libs CUDA/OpenCL.
-     - Après installation du driver, rouvre la session et relance: clinfo
-EOT
-        ;;
-      intel)
-        cat <<'EOT'
-  -> Pour Intel:
-     - Installe intel-compute-runtime (ce script le fait quand GPU=intel).
-     - Option Mesa Rusticl (OpenCL via Mesa): dnf install mesa-libOpenCL
-       puis tester avec: RUSTICL_ENABLE=iris clinfo
-EOT
-        ;;
-      *)
-        cat <<'EOT'
-  -> Aucun GPU détecté: il est normal de n'avoir aucune plateforme OpenCL.
-     Installe un runtime vendor si tu en ajoutes un plus tard.
-EOT
-        ;;
-    esac
-    echo "[HINT] Re-teste:  clinfo | sed -n '1,40p'  &&  ls -1 /etc/OpenCL/vendors/*.icd 2>/dev/null || true"
-  else
-    echo "[OK] OpenCL plateformes détectées: ${platforms} (ICD=${icd_count})"
-  fi
-}
-
-post_validate
+if [[ "$platforms" -eq 0 ]]; then
+  echo "[WARN] OpenCL installé mais aucune plateforme détectée."
+  case "$gpu" in
+    amd)
+      echo "  -> Installe ROCm userland (rocm-opencl, rocm-opencl-runtime) et active le driver AMDGPU/ROCr."
+      ;;
+    nvidia)
+      echo "  -> Installe le driver NVIDIA (xorg-x11-drv-nvidia-cuda via RPM Fusion) pour obtenir nvidia.icd."
+      ;;
+    intel)
+      echo "  -> Assure-toi d'avoir intel-compute-runtime ou mesa-libOpenCL (Rusticl)."
+      ;;
+    *)
+      echo "  -> Pas de GPU détecté : normal qu'aucune plateforme ne soit visible."
+      ;;
+  esac
+else
+  echo "[OK] OpenCL plateformes détectées: $platforms"
+fi
 
 echo "[OK] AI userland installé (best-effort). Drivers gérés par ton autre script."
