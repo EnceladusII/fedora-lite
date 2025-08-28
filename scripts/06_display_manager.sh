@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Step 6 — Switch from gdm to Ly (Zig build)
+# Step 6 — Switch from gdm to Ly with graceful Zig handling (try release w/ system zig first)
 
 . "$(dirname "$0")/00_helpers.sh"
 
@@ -20,102 +20,12 @@ as_root "dnf -y remove greetd tuigreet" || true
 # 2) Installing dependencies
 echo "[INFO] Installing build/runtime dependencies…"
 # add curl, tar, xz, file for portable Zig handling
-as_root "dnf -y install kbd kernel-devel pam-devel libxcb-devel zig xorg-x11-xauth xorg-x11-server-common brightnessctl curl tar xz file"
+as_root "dnf -y install kbd kernel-devel pam-devel libxcb-devel zig xorg-x11-xauth xorg-x11-server-common brightnessctl curl tar xz file git"
 
-# --- Portable Zig 0.15 shim (no system replacement) ---
-# If system zig isn't 0.15.x, fetch a portable toolchain into /opt/zig-<ver> and prepend to PATH.
-ZIG_REQUIRED="${ZIG_REQUIRED:-0.15.0}"     # change to 0.15.1/0.15.2 if Ly requires it
-ZIG_ROOT="/opt/zig-${ZIG_REQUIRED}"
-ZIG_BIN="${ZIG_ROOT}/zig"
-ARCH="$(uname -m)"
-case "$ARCH" in
-  x86_64)   ZIG_ARCH="x86_64" ;;
-  aarch64)  ZIG_ARCH="aarch64" ;;
-  *) echo "[ERROR] Unsupported arch: $ARCH"; exit 1 ;;
-esac
-
-need_portable_zig=true
-if command -v zig >/dev/null 2>&1; then
-  SYS_ZIG_VER="$(zig version || true)"
-  case "${SYS_ZIG_VER}" in
-    0.15.*) need_portable_zig=false; ZIG_BIN="$(command -v zig)"; echo "[INFO] System Zig ${SYS_ZIG_VER} OK";;
-    *)      echo "[WARN] System Zig ${SYS_ZIG_VER} != 0.15.x — will use portable toolchain.";;
-  esac
-else
-  echo "[WARN] No system zig — will use portable toolchain."
-fi
-
-download_and_install_zig() {
-  local ver="$1" arch="$2" dest_root="$3"
-  local tmpdir tgz inner urls ok=false
-  tmpdir="$(mktemp -d)"
-  tgz="${tmpdir}/zig-linux-${arch}-${ver}.tar.xz"
-
-  # URLs to try (primary ziglang.org + fallback GitHub)
-  urls=(
-    "https://ziglang.org/download/${ver}/zig-linux-${arch}-${ver}.tar.xz"
-    "https://github.com/ziglang/zig/releases/download/${ver}/zig-linux-${arch}-${ver}.tar.xz"
-  )
-
-  for url in "${urls[@]}"; do
-    echo "[INFO] Fetching ${url} …"
-    if ! curl -fL --retry 3 --retry-delay 2 -o "${tgz}" "${url}"; then
-      echo "[WARN] Download failed from ${url}"
-      continue
-    fi
-
-    # Sanity checks: not HTML, valid xz
-    if file "${tgz}" | grep -qi 'HTML'; then
-      echo "[WARN] Got HTML instead of archive from ${url}"
-      continue
-    fi
-    if ! xz -t "${tgz}" >/dev/null 2>&1; then
-      echo "[WARN] xz test failed for ${tgz}"
-      continue
-    fi
-
-    # Extract
-    mkdir -p "${tmpdir}/extract"
-    if ! tar -C "${tmpdir}/extract" -xf "${tgz}"; then
-      echo "[WARN] tar extraction failed for ${tgz}"
-      continue
-    fi
-
-    inner="$(find "${tmpdir}/extract" -maxdepth 1 -type d -name 'zig-*' | head -n1)"
-    if [[ -z "${inner}" || ! -x "${inner}/zig" ]]; then
-      echo "[WARN] Could not find zig binary inside archive"
-      continue
-    fi
-
-    as_root "mkdir -p '${dest_root}'"
-    as_root "cp -a '${inner}/.' '${dest_root}/'"
-    as_root "chmod -R a+rX '${dest_root}'"
-    ok=true
-    break
-  done
-
-  rm -rf "${tmpdir}"
-  $ok || return 1
-  return 0
-}
-
-if $need_portable_zig; then
-  if [[ ! -x "${ZIG_BIN}" ]]; then
-    echo "[INFO] Installing portable Zig ${ZIG_REQUIRED} to ${ZIG_ROOT}…"
-    if ! download_and_install_zig "${ZIG_REQUIRED}" "${ZIG_ARCH}" "${ZIG_ROOT}"; then
-      echo "[ERROR] Failed to download/install Zig ${ZIG_REQUIRED} (checked ziglang.org and GitHub)."
-      exit 1
-    fi
-  fi
-  echo "[INFO] Using portable Zig at ${ZIG_BIN}: $(${ZIG_BIN} version)"
-fi
-
-# Ensure this script prefers the selected zig
-export PATH="$(dirname "${ZIG_BIN}"):${PATH}"
-
-# 3) Clone and Build Ly
+# 3) Clone Ly (optionally pin to release/tag/commit via LY_REF)
 REPO_URL="${REPO_URL:-https://codeberg.org/fairyglade/ly.git}"
 BUILD_DIR="${BUILD_DIR:-/tmp/ly}"
+LY_REF="${LY_REF:v1.0.3}"   # e.g. export LY_REF=v1.0.5 to force a 1.0.x release
 
 if [[ ! -d ${BUILD_DIR} ]]; then
   echo "[INFO] Cloning Ly into ${BUILD_DIR}…"
@@ -126,14 +36,108 @@ else
   git -C "${BUILD_DIR}" reset --hard origin/master
 fi
 
-echo "[INFO] Building Ly with Zig as regular user…"
-( cd "${BUILD_DIR}" && zig build -Doptimize=ReleaseFast )
+if [[ -n "${LY_REF}" ]]; then
+  echo "[INFO] Checking out Ly ref: ${LY_REF}"
+  git -C "${BUILD_DIR}" fetch --tags --all
+  git -C "${BUILD_DIR}" checkout --force "${LY_REF}"
+fi
 
-# 4) Installing Ly (systemd)
+# --- helper: portable Zig 0.15 shim (only if needed) ---
+install_portable_zig_if_needed() {
+  local ZIG_REQUIRED="${ZIG_REQUIRED:-0.15.0}"     # change to 0.15.1/0.15.2 if needed
+  local ARCH ZIG_ARCH ZIG_ROOT ZIG_BIN
+  ARCH="$(uname -m)"
+  case "$ARCH" in
+    x86_64)   ZIG_ARCH="x86_64" ;;
+    aarch64)  ZIG_ARCH="aarch64" ;;
+    *) echo "[ERROR] Unsupported arch: $ARCH"; return 1 ;;
+  esac
+  ZIG_ROOT="/opt/zig-${ZIG_REQUIRED}"
+  ZIG_BIN="${ZIG_ROOT}/zig"
+
+  if [[ -x "${ZIG_BIN}" ]]; then
+    export PATH="$(dirname "${ZIG_BIN}"):${PATH}"
+    echo "[INFO] Using cached portable Zig at ${ZIG_BIN}: $(${ZIG_BIN} version)"
+    return 0
+  fi
+
+  download_and_install_zig() {
+    local ver="$1" arch="$2" dest_root="$3"
+    local tmpdir tgz inner urls ok=false
+    tmpdir="$(mktemp -d)"
+    tgz="${tmpdir}/zig-linux-${arch}-${ver}.tar.xz"
+    urls=(
+      "https://ziglang.org/download/${ver}/zig-linux-${arch}-${ver}.tar.xz"
+      "https://github.com/ziglang/zig/releases/download/${ver}/zig-linux-${arch}-${ver}.tar.xz"
+    )
+    for url in "${urls[@]}"; do
+      echo "[INFO] Fetching ${url} …"
+      if ! curl -fL --retry 3 --retry-delay 2 -o "${tgz}" "${url}"; then
+        echo "[WARN] Download failed from ${url}"
+        continue
+      fi
+      if file "${tgz}" | grep -qi 'HTML'; then
+        echo "[WARN] Got HTML instead of archive from ${url}"
+        continue
+      fi
+      if ! xz -t "${tgz}" >/dev/null 2>&1; then
+        echo "[WARN] xz test failed for ${tgz}"
+        continue
+      fi
+      mkdir -p "${tmpdir}/extract"
+      if ! tar -C "${tmpdir}/extract" -xf "${tgz}"; then
+        echo "[WARN] tar extraction failed for ${tgz}"
+        continue
+      fi
+      inner="$(find "${tmpdir}/extract" -maxdepth 1 -type d -name 'zig-*' | head -n1)"
+      if [[ -z "${inner}" || ! -x "${inner}/zig" ]]; then
+        echo "[WARN] Could not find zig binary inside archive"
+        continue
+      fi
+      as_root "mkdir -p '${dest_root}'"
+      as_root "cp -a '${inner}/.' '${dest_root}/'"
+      as_root "chmod -R a+rX '${dest_root}'"
+      ok=true; break
+    done
+    rm -rf "${tmpdir}"
+    $ok
+  }
+
+  echo "[INFO] Installing portable Zig ${ZIG_REQUIRED} to ${ZIG_ROOT}…"
+  if ! download_and_install_zig "${ZIG_REQUIRED}" "${ZIG_ARCH}" "${ZIG_ROOT}"; then
+    echo "[ERROR] Failed to download/install Zig ${ZIG_REQUIRED} (checked ziglang.org and GitHub)."
+    return 1
+  fi
+  export PATH="$(dirname "${ZIG_BIN}"):${PATH}"
+  echo "[INFO] Using portable Zig at ${ZIG_BIN}: $(${ZIG_BIN} version)"
+}
+
+# --- helper: try to build with current zig on PATH ---
+try_build_ly() {
+  echo "[INFO] Building Ly with Zig $(zig version) …"
+  ( cd "${BUILD_DIR}" && zig build -Doptimize=ReleaseFast )
+}
+
+# 4) Build step: try system Zig first, then fallback to portable 0.15 if needed
+use_portable=false
+if command -v zig >/dev/null 2>&1; then
+  echo "[INFO] System Zig detected: $(zig version)"
+else
+  echo "[WARN] No system Zig found."
+fi
+
+if ! try_build_ly; then
+  echo "[WARN] Build with current Zig failed. Falling back to portable Zig 0.15…"
+  use_portable=true
+  install_portable_zig_if_needed
+  try_build_ly
+fi
+
+# 5) Installing Ly (systemd)
 echo "[INFO] Installing Ly (systemd)…"
 ( cd "${BUILD_DIR}" && as_root "zig build installexe -Dinit_system=systemd" )
 
-# 5) Deploy conf from repo
+# 6) Deploy conf from repo
 echo "[INFO] Deploying Ly config + PAM…"
 as_root "install -D -m 0644 '${ROOT_DIR}/config/ly/config.${THEME}.ini' /etc/ly/config.ini"
 as_root "install -D -m 0644 '${ROOT_DIR}/config/pam.d/ly'      /etc/pam.d/ly"
@@ -143,26 +147,22 @@ if grep -q "__TARGET_USER__" /etc/ly/config.ini 2>/dev/null; then
   as_root "sed -i 's/__TARGET_USER__/${TARGET_USER}/g' /etc/ly/config.ini"
 fi
 
-# 6) Hyprland session fallback if unavailable
+# 7) Hyprland session fallback if unavailable
 if ! test -f /usr/share/wayland-sessions/hyprland.desktop; then
   echo "[INFO] Installing fallback Hyprland session file…"
   as_root "install -D -m 0644 '${ROOT_DIR}/config/wayland-sessions/hyprland.desktop' \
     /usr/share/wayland-sessions/hyprland.desktop"
 fi
 
-# as_root "install -D -m 0644 '${ROOT_DIR}/config/vtrgb/vtrgb' /etc/vtrgb" || true
-# as_root "install -D -m 0644 '${ROOT_DIR}/config/systemd/vt-colors.service' /etc/systemd/system/vt-colors.service" || true
-# as_root "systemctl enable vt-colors.service" || true
-
-# 7) SELinux (pam.d)
+# 8) SELinux contexts
 echo "[INFO] Restoring SELinux contexts…"
 as_root "restorecon -RF /etc/ly /etc/pam.d/ly /usr/share/wayland-sessions || true"
 
-# 8) tty2 by default → disable getty@tty2
+# 9) tty2 by default → disable getty@tty2
 echo "[INFO] Disabling getty@tty2.service (Ly runs on tty2)…"
 as_root "systemctl disable --now getty@tty2.service" || true
 
-# 9) Enable Ly + graphical target
+# 10) Enable Ly + graphical target
 echo "[INFO] Enabling Ly…"
 as_root "systemctl enable ly.service"
 as_root "systemctl set-default graphical.target"
@@ -175,4 +175,9 @@ cat <<'EOF'
     sudo ausearch -m avc -ts recent | audit2allow -M ly-local
     sudo semodule -i ly-local.pp
 - Logs: journalctl -u ly -b -e
+
+Notes:
+- You can pin a specific release/tag/commit with: export LY_REF=v1.0.5
+- The script first tries to build with your system Zig (e.g., 0.14.x).
+  If that fails, it automatically uses a portable Zig 0.15 to complete the build.
 EOF
