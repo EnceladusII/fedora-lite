@@ -79,6 +79,8 @@ pkg_installed() { rpm -q "$1" &>/dev/null; }
 # Enable/disable services safely (root required)
 enable_service() { as_root "systemctl enable --now '$1' 2>/dev/null || true"; }
 disable_service() { as_root "systemctl disable --now '$1' 2>/dev/null || true"; }
+enable_service_reboot() { as_root "systemctl enable --now '$1' 2>/dev/null || true"; }
+disable_service_reboot() { as_root "systemctl disable '$1' 2>/dev/null || true"; }
 
 # Apply a list file (ignores comments and blanks)
 apply_list() {

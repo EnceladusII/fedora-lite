@@ -32,8 +32,23 @@ esac
 
 # 2) Stop other DMs (gdm/greetd)
 echo "[INFO] Disabling conflicting display managers…"
-disable_service gdm.service || true
-as_root "systemctl disable --now greetd.service" || true
+
+is_graphical_session=0
+if [[ -n "${XDG_SESSION_ID:-}" ]]; then
+  # Si on est dans une session graphique (GNOME, etc.)
+  if loginctl show-session "$XDG_SESSION_ID" -p Type -p Desktop 2>/dev/null | grep -qiE 'Type=wayland|Type=x11|Desktop=gnome|Desktop=plasma'; then
+    is_graphical_session=1
+  fi
+fi
+
+if (( is_graphical_session )); then
+  echo "[INFO] Detected running graphical session; will not stop GDM now."
+  disable_service_reboot gdm.service || true
+else
+  disable_service_reboot gdm.service || true
+  disable_service greetd.service || true
+fi
+
 as_root "dnf -y remove greetd tuigreet" || true
 
 # 3) Clone v1.1.x (Codeberg first, GitHub fallback)
@@ -106,7 +121,7 @@ as_root "systemctl disable --now getty@tty2.service" || true
 
 # 10) Enable Ly + graphical target
 echo "[INFO] Enabling Ly…"
-as_root "systemctl enable ly.service"
+enable_service_reboot ly.service
 as_root "systemctl set-default graphical.target"
 
 cat <<'EOF'
