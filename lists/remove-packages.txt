@@ -10,6 +10,8 @@ gnome-clocks
 gnome-calendar
 gnome-logs             # logs viewer
 gnome-font-viewer
+gnome-system-monitor
+malcontent-control
 
 # ---- Media / capture ----
 cheese                 # Webcam
