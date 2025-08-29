@@ -235,22 +235,15 @@ fi
 
 # -------- Bootstrap: lancer puis éteindre Gear Lever une fois --------
 bootstrap_gearlever_config() {
-  # Lance GL sous l'utilisateur cible pour qu'il crée son keyfile, puis stoppe.
-  # Utilise timeout pour un arrêt propre (SIGTERM) puis forcé si nécessaire.
   echo "[INFO] Bootstrapping Gear Lever (first-run)…"
   as_user "
     mkdir -p '$GL_CONF_DIR'
-    # Lancer GL en tâche de fond headless; l'IHM peut apparaître, on le tue après.
-    # On préfère 'timeout' pour éviter un process zombie si l'appli ignore SIGTERM.
     timeout --signal=TERM 10s $GL_CMD >/dev/null 2>&1 || true
-
-    # Attendre la création du keyfile par l'appli (si elle le gère elle-même).
     for i in {1..30}; do
       [ -f '$GL_CONF_FILE' ] && break
       sleep 0.2
     done
   "
-
   if ! as_user "[ -f '$GL_CONF_FILE' ]"; then
     echo "[WARN] Gear Lever n'a pas créé le keyfile; on le préparera manuellement."
   else
@@ -259,35 +252,28 @@ bootstrap_gearlever_config() {
 }
 bootstrap_gearlever_config
 
-# -------- Préparation/édition du keyfile --------
+# -------- Préparation/édition du keyfile (style dnf.conf demandé) --------
 as_root "bash -lc '
   set -euo pipefail
-
-  # S’assurer que le dossier config existe (au cas où le bootstrap ne l’aurait pas fait)
   install -d -m 700 \"$GL_CONF_DIR\"
-
-  # Initialiser le keyfile avec la section attendue s’il n’existe pas
-  if [[ ! -f \"$GL_CONF_FILE\" ]]; then
-    cat > \"$GL_CONF_FILE\" <<EOF
-[it/mijorus/gearlever]
-# auto-created on $(date -u +%Y-%m-%dT%H:%M:%SZ)
-EOF
-  fi
-
-  # Sauvegarde avant modifs
+  [[ -f \"$GL_CONF_FILE\" ]] || touch \"$GL_CONF_FILE\"
   cp -a \"$GL_CONF_FILE\" \"$GL_CONF_FILE.bak.$ts\"
 
-  # S’assurer que la section existe
-  grep -q \"^\[it\/mijorus\/gearlever\]$\" \"$GL_CONF_FILE\" || printf \"\n[it/mijorus/gearlever]\n\" >> \"$GL_CONF_FILE\"
+  # s’assurer qu’au moins une section existe
+  grep -q \"^\[it/mijorus/gearlever\]\" \"$GL_CONF_FILE\" || echo \"[it/mijorus/gearlever]\" >> \"$GL_CONF_FILE\"
 
-  # Purger nos clés uniquement dans la section cible
-  sed -i -E \"/^\\[it\\/mijorus\\/gearlever\\]\$/,/^\\[/{/^(is-maximized|appimages-default-folder)=/d}\" \"$GL_CONF_FILE\"
+  # remove previous occurrences to avoid duplicates (clés concernées)
+  sed -i \"/^is-maximized=/d;/^appimages-default-folder=/d\" \"$GL_CONF_FILE\"
 
-  # Ajouter nos clés juste après l’entête de section
-  sed -i \"/^\\[it\\/mijorus\\/gearlever\\]\$/a is-maximized=true\\
-appimages-default-folder='"$APPDIR"'\" \"$GL_CONF_FILE\"
+  # append our tuned block
+  cat >> \"$GL_CONF_FILE\" <<EOF
 
-  echo \"[OK] GL keyfile préparé (backup: $GL_CONF_FILE.bak.$ts)\"
+# Added by installer:
+[it/mijorus/gearlever]
+is-maximized=true
+appimages-default-folder=$APPDIR
+EOF
+  echo \"[OK] Gear Lever keyfile tuned (backup: $GL_CONF_FILE.bak.$ts)\"
 '"
 
 if [[ -f "$APPIMG_LIST" ]]; then
@@ -431,7 +417,7 @@ if [[ -f "$APPIMG_LIST" ]]; then
   done < <(apply_list "$APPIMG_LIST")
 fi
 
-# -------- Integration via Gear Lever --------
+# -------- Intégration via Gear Lever --------
 integrate_and_update_appimages() {
   local appdir="${TMPDIR:-$HOME/.AppImages}"
   [[ -d "$appdir" ]] || return 0
@@ -454,7 +440,8 @@ integrate_and_update_appimages() {
       continue
     fi
 
-    local base="$(basename "$f")"
+    local base
+    base="$(basename "$f")"
     echo "[INFO] Candidate: $base"
 
     if printf '%s\n' "$installed" | grep -Fq -- "$base"; then
