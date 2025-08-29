@@ -221,13 +221,52 @@ GL_CONF_FILE="$(user_home "$TARGET_USER")/.var/app/it.mijorus.gearlever/config/g
 GL_CONF_DIR="$(dirname "$GL_CONF_FILE")"
 ts="$(date +%s)"
 
+# -------- Gear Lever detection (moved earlier) --------
+as_root "dnf -y install fuse fuse-libs"  # requis pour AppImage
+if command -v gearlever >/dev/null 2>&1; then
+  GL_CMD="gearlever"
+else
+  GL_CMD="flatpak run it.mijorus.gearlever"
+fi
+GL_YES=""
+if $GL_CMD --help 2>/dev/null | grep -q -- '--assume-yes'; then
+  GL_YES="--assume-yes"
+fi
+
+# -------- Bootstrap: lancer puis éteindre Gear Lever une fois --------
+bootstrap_gearlever_config() {
+  # Lance GL sous l'utilisateur cible pour qu'il crée son keyfile, puis stoppe.
+  # Utilise timeout pour un arrêt propre (SIGTERM) puis forcé si nécessaire.
+  echo "[INFO] Bootstrapping Gear Lever (first-run)…"
+  as_user "
+    mkdir -p '$GL_CONF_DIR'
+    # Lancer GL en tâche de fond headless; l'IHM peut apparaître, on le tue après.
+    # On préfère 'timeout' pour éviter un process zombie si l'appli ignore SIGTERM.
+    timeout --signal=TERM 10s $GL_CMD >/dev/null 2>&1 || true
+
+    # Attendre la création du keyfile par l'appli (si elle le gère elle-même).
+    for i in {1..30}; do
+      [ -f '$GL_CONF_FILE' ] && break
+      sleep 0.2
+    done
+  "
+
+  if ! as_user "[ -f '$GL_CONF_FILE' ]"; then
+    echo "[WARN] Gear Lever n'a pas créé le keyfile; on le préparera manuellement."
+  else
+    echo "[OK] Gear Lever initialisé, keyfile présent."
+  fi
+}
+bootstrap_gearlever_config
+
+# -------- Préparation/édition du keyfile --------
 as_root "bash -lc '
   set -euo pipefail
 
-  # Ensure the config directory exists inside the Flatpak sandbox
+  # S’assurer que le dossier config existe (au cas où le bootstrap ne l’aurait pas fait)
   install -d -m 700 \"$GL_CONF_DIR\"
 
-  # Initialize the keyfile with the expected section if it does not exist
+  # Initialiser le keyfile avec la section attendue s’il n’existe pas
   if [[ ! -f \"$GL_CONF_FILE\" ]]; then
     cat > \"$GL_CONF_FILE\" <<EOF
 [it/mijorus/gearlever]
@@ -235,20 +274,20 @@ as_root "bash -lc '
 EOF
   fi
 
-  # Backup before modifications
+  # Sauvegarde avant modifs
   cp -a \"$GL_CONF_FILE\" \"$GL_CONF_FILE.bak.$ts\"
 
-  # Ensure the section header exists
+  # S’assurer que la section existe
   grep -q \"^\[it\/mijorus\/gearlever\]$\" \"$GL_CONF_FILE\" || printf \"\n[it/mijorus/gearlever]\n\" >> \"$GL_CONF_FILE\"
 
-  # Remove previous keys ONLY within the target section
+  # Purger nos clés uniquement dans la section cible
   sed -i -E \"/^\\[it\\/mijorus\\/gearlever\\]\$/,/^\\[/{/^(is-maximized|appimages-default-folder)=/d}\" \"$GL_CONF_FILE\"
 
-  # Add our keys right after the section header
+  # Ajouter nos clés juste après l’entête de section
   sed -i \"/^\\[it\\/mijorus\\/gearlever\\]\$/a is-maximized=true\\
 appimages-default-folder='"$APPDIR"'\" \"$GL_CONF_FILE\"
 
-  echo \"[OK] GL keyfile prepared (backup: $GL_CONF_FILE.bak.$ts)\"
+  echo \"[OK] GL keyfile préparé (backup: $GL_CONF_FILE.bak.$ts)\"
 '"
 
 if [[ -f "$APPIMG_LIST" ]]; then
@@ -393,20 +432,6 @@ if [[ -f "$APPIMG_LIST" ]]; then
 fi
 
 # -------- Integration via Gear Lever --------
-GL_CMD=""
-as_root "dnf -y install fuse fuse-libs"
-
-if command -v gearlever >/dev/null 2>&1; then
-  GL_CMD="gearlever"
-else
-  GL_CMD="flatpak run it.mijorus.gearlever"
-fi
-
-GL_YES=""
-if $GL_CMD --help 2>/dev/null | grep -q -- '--assume-yes'; then
-  GL_YES="--assume-yes"
-fi
-
 integrate_and_update_appimages() {
   local appdir="${TMPDIR:-$HOME/.AppImages}"
   [[ -d "$appdir" ]] || return 0
