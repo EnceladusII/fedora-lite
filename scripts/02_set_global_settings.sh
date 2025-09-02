@@ -86,7 +86,7 @@ as_user $'dbus-run-session gsettings set org.gnome.desktop.input-sources sources
 if [[ -n "${KEYBOARD_OPTIONS}" ]]; then
   _opts_quoted="${KEYBOARD_OPTIONS//,/','}"
   # On entoure chaque option par des quotes simples dans la liste gsettings: ['opt1','opt2']
-  as_user $'dbus-run-session gsettings set org.gnome.desktop.input-sources xkb-options '\"['"'"${_opts_quoted}"'"']\"' || true
+  as_user $'dbus-run-session gsettings set org.gnome.desktop.input-sources xkb-options =\"['"'"${_opts_quoted}"'"']\"' || true
 fi
 
 ######## 4) Conseils d’application ########
