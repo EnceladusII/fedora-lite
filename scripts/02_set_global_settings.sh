@@ -11,21 +11,20 @@ UHOME="$(user_home "$TARGET_USER")"
 : "${LANG_DEFAULT:?Missing LANG_DEFAULT in .env}"     # ex: en_US.UTF-8
 : "${FORMATS:?Missing FORMATS in .env}"               # ex: fr_FR.UTF-8
 : "${CLOCK_FORMAT:?Missing CLOCK_FORMAT in .env}"     # "24h" ou "12h" (GNOME uniquement)
-: "${KEYBOARD_LAYOUT:?Missing KEYBOARD_LAYOUT in .env}"     # ex: fr
+: "${KEYBOARD_LAYOUT:?Missing KEYBOARD_LAYOUT in .env}"     # ex: fr, us
 : "${KEYBOARD_VARIANT:?Missing KEYBOARD_VARIANT in .env}"   # ex: oss ou ""
-: "${KEYBOARD_OPTIONS:?Missing KEYBOARD_OPTIONS in .env}"   # ex: "caps:escape,compose:rctrl" ou ""
+: "${KEYBOARD_OPTIONS:?Missing KEYBOARD_OPTIONS in .env}"   # ex: "caps:escape" ou ""
 
-# ID XKB pour gsettings (ex: "fr+oss" ou "us")
+# Build XKB id (for GNOME path; harmless elsewhere)
 _XKB_ID="$KEYBOARD_LAYOUT"
-if [[ -n "$KEYBOARD_VARIANT" ]]; then
+if [[ -n "${KEYBOARD_VARIANT}" ]]; then
   _XKB_ID="${KEYBOARD_LAYOUT}+${KEYBOARD_VARIANT}"
 fi
 
 ######## 1) Thèmes (GTK) & Dark mode ########
-# Paquet thème GTK3 (utile aussi hors GNOME)
 as_root "dnf install -y adw-gtk3-theme"
 
-# GNOME/libadwaita → dark mode (inopérant hors GNOME, mais sans danger)
+# GNOME/libadwaita → dark mode (no effect outside GNOME, but harmless)
 as_user "dbus-run-session gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' || true"
 
 # Icônes & curseur (GNOME)
@@ -66,10 +65,10 @@ LC_ADDRESS=${FORMATS}
 LC_TELEPHONE=${FORMATS}
 EOF'"
 
-# (optionnel) Curseur Wayland générique
+# (facultatif) Curseur Wayland générique
 as_user "bash -lc 'cat > ~/.config/environment.d/20-cursor.conf <<EOF
-XCURSOR_THEME=Adwaita
-XCURSOR_SIZE=24
+XCURSOR_THEME=${XCURSOR_THEME:-Adwaita}
+XCURSOR_SIZE=${XCURSOR_SIZE:-24}
 EOF'"
 
 # GNOME uniquement : région & format d’horloge (sans effet pour quickshell/hors GNOME)
@@ -77,15 +76,18 @@ as_user "dbus-run-session gsettings set org.gnome.system.locale region '${FORMAT
 as_user "dbus-run-session gsettings set org.gnome.desktop.interface clock-format '${CLOCK_FORMAT}' || true"
 
 ######## 3) Keyboard layout (GNOME uniquement à ce stade) ########
-# Sources d'entrée GNOME (inopérant hors GNOME, mais utile si tu alternes les sessions)
-as_user "dbus-run-session gsettings set org.gnome.desktop.input-sources sources \"[('xkb', '$_XKB_ID')]\" || true"
+# ⚠️ Échappement robuste des GVariant pour éviter le parsing par le shell
+# Sources d'entrée GNOME: "[('xkb','<layout+variant>')]"
+# On échappe [ ] ( ) afin que la chaîne arrive intacte à gsettings, même si as_user ne cite pas parfaitement.
+as_user "dbus-run-session gsettings set org.gnome.desktop.input-sources sources \"\\[\\('xkb', '$_XKB_ID'\\)\\]\" || true"
 
-# Options XKB (ex: caps:escape)
-if [[ -n "$KEYBOARD_OPTIONS" ]]; then
-  as_user "dbus-run-session gsettings set org.gnome.desktop.input-sources xkb-options \"['${KEYBOARD_OPTIONS//,/','}']\" || true"
+# Options XKB (liste gsettings: \"['opt1','opt2']\")
+if [[ -n "${KEYBOARD_OPTIONS}" ]]; then
+  _opts_quoted="${KEYBOARD_OPTIONS//,/','}"
+  as_user "dbus-run-session gsettings set org.gnome.desktop.input-sources xkb-options \"\\['${_opts_quoted}'\\]\" || true"
 fi
 
 ######## 4) Conseils d’application ########
-echo \"[OK] Locales/metrics/clock (agnostique), GTK dark, et layout GNOME appliqués pour $TARGET_USER.\"
-echo \"     Déconnexion/reconnexion recommandée pour que environment.d soit pris en compte.\"
-echo \"     Sous GNOME: réglages actifs. Sous quickshell/hors GNOME: 24h + métrique via LC_*.\"
+echo "[OK] Locales/metrics/clock (agnostique), GTK dark, et layout GNOME appliqués pour $TARGET_USER."
+echo "     Déconnexion/reconnexion recommandée pour que environment.d soit pris en compte."
+echo "     Sous GNOME: réglages actifs. Sous quickshell/hors GNOME: 24h + métrique via LC_*."
