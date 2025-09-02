@@ -76,13 +76,13 @@ as_user "dbus-run-session gsettings set org.gnome.system.locale region '${FORMAT
 as_user "dbus-run-session gsettings set org.gnome.desktop.interface clock-format '${CLOCK_FORMAT}' || true"
 
 ######## 3) Keyboard layout (GNOME uniquement à ce stade) ########
-# Sources d’entrée GNOME (array de tuples GVariant)
-as_user "dbus-run-session gsettings set org.gnome.desktop.input-sources sources \"[('xkb', '$_XKB_ID')]\" || true"
+# Sources d’entrée GNOME
+as_user 'dbus-run-session gsettings set org.gnome.desktop.input-sources sources "[('"'"'xkb'"'"', '"'"'"$_XKB_ID"'"'"')]" || true'
 
-# xkb-options si fourni (liste de strings)
-if [[ -n \"${KEYBOARD_OPTIONS}\" ]]; then
-  _opts_quoted=\"${KEYBOARD_OPTIONS//,/','}\"
-  as_user \"dbus-run-session gsettings set org.gnome.desktop.input-sources xkb-options \\\"['${_opts_quoted}']\\\" || true\"
+# xkb-options si fourni
+if [[ -n "${KEYBOARD_OPTIONS}" ]]; then
+  _opts_quoted="${KEYBOARD_OPTIONS//,/','}"
+  as_user 'dbus-run-session gsettings set org.gnome.desktop.input-sources xkb-options '"\"['"'"'${_opts_quoted}'"'"']\"'|| true'
 fi
 
 ######## 4) Conseils d’application ########
