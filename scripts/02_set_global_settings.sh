@@ -78,15 +78,19 @@ as_user "dbus-run-session gsettings set org.gnome.desktop.interface clock-format
 ######## 3) Keyboard layout (GNOME uniquement à ce stade) ########
 
 # sources = [ ('xkb', '<layout+variant>') ]
-# Ici on utilise $'...' (ANSI-C quoting). Le shell voit une *seule* chaîne,
-# donc les ( ) [ ] ne sont jamais interprétés comme syntaxe.
-as_user $'dbus-run-session gsettings set org.gnome.desktop.input-sources sources "[(\'xkb\', '\'''"$_XKB_ID"''\'')]" || true'
+# On envoie UNE seule chaîne à as_user grâce à $'...'
+# Les quotes simples internes sont représentées par \'
+as_user $'dbus-run-session gsettings set org.gnome.desktop.input-sources sources "[(\'xkb\', '\''
+'"$_XKB_ID"
+$'\'\')]" || true'
 
 # xkb-options si fourni, ex: "caps:escape,compose:rctrl"
 if [[ -n "${KEYBOARD_OPTIONS}" ]]; then
   _opts_quoted="${KEYBOARD_OPTIONS//,/','}"
-  # On entoure chaque option par des quotes simples dans la liste gsettings: ['opt1','opt2']
-  as_user $'dbus-run-session gsettings set org.gnome.desktop.input-sources xkb-options =\"['"'"${_opts_quoted}"'"']\"' || true
+  # Liste GVariant: ['opt1','opt2'] — même technique de quoting
+  as_user $'dbus-run-session gsettings set org.gnome.desktop.input-sources xkb-options '\
+"\"['"'"${_opts_quoted}"'"']\""\
+$' || true'
 fi
 
 ######## 4) Conseils d’application ########
